@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GTMHelix ABM</title>
+    <style>
+      :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:#0b0b0f; }
+      body { margin:0; padding:14px; background:#f6f8fb; }
+      .card { background:#fff; border-radius:16px; padding:16px; box-shadow:0 12px 24px rgba(15,23,42,.08); }
+      h2 { margin:0 0 10px; font-size:18px; }
+      .muted { color:#6c768a; font-size:12px; margin-bottom:12px; }
+      .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .col { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+      label { font-size:12px; color:#2b3445; }
+      input, select, textarea { border:1px solid #cad3e0; border-radius:10px; padding:10px 12px; font-size:13px; }
+      textarea { min-height:90px; resize:vertical; }
+      .chips { display:flex; flex-wrap:wrap; gap:8px; }
+      .chip { border:1px solid #cad3e0; border-radius:999px; padding:6px 10px; font-size:12px; cursor:pointer; user-select:none; }
+      .chip[data-on="true"] { background:#eef2ff; border-color:#111bf5; }
+      .btnbar { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+      button { border:none; border-radius:10px; padding:10px 12px; font-weight:650; cursor:pointer; }
+      .primary { background:#111bf5; color:#fff; }
+      .secondary { background:#eef2ff; color:#111bf5; }
+      .danger { background:#fee2e2; color:#991b1b; }
+      .stepper { display:flex; gap:6px; margin:10px 0 14px; }
+      .dot { width:10px; height:10px; border-radius:999px; background:#cad3e0; }
+      .dot[data-on="true"] { background:#111bf5; }
+      .errors { background:#fff7ed; border:1px solid #fed7aa; padding:10px; border-radius:12px; margin-top:12px; display:none; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; }
+      .tabs { display:flex; gap:8px; margin-bottom:10px; }
+      .tab { padding:8px 10px; border-radius:10px; border:1px solid #cad3e0; cursor:pointer; font-size:12px; }
+      .tab[data-on="true"] { background:#f2f4fb; border-color:#111bf5; }
+      .tablewrap { overflow:auto; border:1px solid #e5e7eb; border-radius:12px; }
+      table { border-collapse:collapse; width:100%; font-size:12px; }
+      th, td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; white-space:nowrap; }
+      th { background:#f9fafb; }
+      .divider { height:1px; background:#e5e7eb; margin:14px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>GTMHelix — ABM Intake & Scoring</h2>
+      <div class="muted">Guided intake only. Vague inputs get rejected.</div>
+
+      <div class="tabs">
+        <div class="tab" id="tabIntake" data-on="true">Intake</div>
+        <div class="tab" id="tabProjects" data-on="false">Projects</div>
+      </div>
+
+      <div id="intakeView">
+        <div class="stepper" id="stepper"></div>
+        <div id="step"></div>
+        <div class="btnbar">
+          <button class="secondary" id="backBtn">Back</button>
+          <button class="secondary" id="nextBtn">Next</button>
+          <button class="secondary" id="validateBtn">Validate</button>
+          <button class="primary" id="createBtn">Create Project (Save)</button>
+        </div>
+        <div id="errors" class="errors"></div>
+
+        <div id="outputs" style="display:none;">
+          <div class="divider"></div>
+          <h2>Outputs</h2>
+          <div class="col">
+            <label>ABM Brief (JSON)</label>
+            <textarea id="briefBox" class="mono" readonly></textarea>
+          </div>
+          <div class="col">
+            <label>Scoring Template (CSV)</label>
+            <textarea id="csvBox" class="mono" readonly></textarea>
+          </div>
+          <div class="btnbar">
+            <button class="secondary" id="copyCsvBtn">Copy CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="projectsView" style="display:none;">
+        <div class="btnbar">
+          <button class="secondary" id="refreshProjectsBtn">Refresh</button>
+        </div>
+        <div class="tablewrap" style="margin-top:10px;">
+          <table id="projectsTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const SEGMENTS = ["Midmarket ITeS/Telecom","B2B SaaS Startup (Series A/B+)","GenAI Startup","Vertical SaaS"];
+      const VERTICALS = ["Logistics","Cybersecurity","Fintech","HRtech","TravelTech","CPG","Pharma","Healthcare","Other"];
+      const GEOS = ["US","UK","India","Singapore","Indonesia","DACH","Nordics","UAE","APAC","MENA"];
+      const HEADCOUNT = ["1-50","51-200","201-1000","1001-5000","5000+"];
+      const SALES = ["Sales-led","PLG","Hybrid","Partner-led"];
+      const SIGNALS = ["Intent","Technographics","Hiring","Funding","Website activity","None"];
+
+      const tabIntake = document.querySelector("#tabIntake");
+      const tabProjects = document.querySelector("#tabProjects");
+      const intakeView = document.querySelector("#intakeView");
+      const projectsView = document.querySelector("#projectsView");
+      const errorsEl = document.querySelector("#errors");
+      const stepperEl = document.querySelector("#stepper");
+      const stepEl = document.querySelector("#step");
+      const outputsEl = document.querySelector("#outputs");
+      const briefBox = document.querySelector("#briefBox");
+      const csvBox = document.querySelector("#csvBox");
+      const projectsTable = document.querySelector("#projectsTable");
+
+      let workspaceId = window.openai?.widgetState?.workspaceId;
+      if (!workspaceId) {
+        workspaceId = crypto.randomUUID();
+        window.openai?.setWidgetState?.({ workspaceId });
+      }
+
+      let step = 0;
+      const steps = ["Basics","ICP","Positioning","GTM","Review"];
+
+      let state = {
+        clientName: "",
+        website: "",
+        segment: SEGMENTS[0],
+        verticals: [],
+        otherVertical: "",
+        geos: [],
+        productCategory: "",
+        oneLiner: "",
+        primaryBuyerRoles: [],
+        pains: [],
+        differentiation: [],
+        competitors: [],
+        avgContractValueUsd: "",
+        targetHeadcountBand: HEADCOUNT[1],
+        salesMotion: SALES[0],
+        salesCycleDays: 60,
+        dataSignalsAvailable: ["None"]
+      };
+
+      function setTab(which) {
+        const intakeOn = which === "intake";
+        tabIntake.dataset.on = String(intakeOn);
+        tabProjects.dataset.on = String(!intakeOn);
+        intakeView.style.display = intakeOn ? "block" : "none";
+        projectsView.style.display = intakeOn ? "none" : "block";
+      }
+      tabIntake.onclick = () => setTab("intake");
+      tabProjects.onclick = () => setTab("projects");
+
+      function dot(on) {
+        const d = document.createElement("div");
+        d.className = "dot";
+        d.dataset.on = String(on);
+        return d;
+      }
+      function renderStepper() {
+        stepperEl.innerHTML = "";
+        steps.forEach((_, i) => stepperEl.appendChild(dot(i === step)));
+      }
+
+      function chipGroup(label, items, selectedArr, onChange) {
+        const wrap = document.createElement("div");
+        wrap.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        const chips = document.createElement("div");
+        chips.className = "chips";
+        const set = new Set(selectedArr);
+        items.forEach((item) => {
+          const c = document.createElement("div");
+          c.className = "chip";
+          c.textContent = item;
+          c.dataset.on = String(set.has(item));
+          c.onclick = () => {
+            if (set.has(item)) set.delete(item); else set.add(item);
+            onChange([...set]);
+            c.dataset.on = String(set.has(item));
+          };
+          chips.appendChild(c);
+        });
+        wrap.appendChild(lab);
+        wrap.appendChild(chips);
+        return wrap;
+      }
+
+      function field(label, key, placeholder, type="text") {
+        const wrap = document.createElement("div");
+        wrap.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        const input = document.createElement("input");
+        input.type = type;
+        input.placeholder = placeholder;
+        input.value = state[key] ?? "";
+        input.oninput = () => state[key] = input.value;
+        wrap.appendChild(lab);
+        wrap.appendChild(input);
+        return wrap;
+      }
+
+      function selectField(label, key, options) {
+        const wrap = document.createElement("div");
+        wrap.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        const sel = document.createElement("select");
+        options.forEach(o => {
+          const opt = document.createElement("option");
+          opt.value = o; opt.textContent = o;
+          sel.appendChild(opt);
+        });
+        sel.value = state[key] ?? options[0];
+        sel.onchange = () => { state[key] = sel.value; renderStep(); };
+        wrap.appendChild(lab);
+        wrap.appendChild(sel);
+        return wrap;
+      }
+
+      function textarea(label, key, placeholder) {
+        const wrap = document.createElement("div");
+        wrap.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        const ta = document.createElement("textarea");
+        ta.placeholder = placeholder;
+        ta.value = state[key] ?? "";
+        ta.oninput = () => state[key] = ta.value;
+        wrap.appendChild(lab);
+        wrap.appendChild(ta);
+        return wrap;
+      }
+
+      function listEditor(label, key, placeholder) {
+        const wrap = document.createElement("div");
+        wrap.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = label + " (press Enter to add; click to remove)";
+        const input = document.createElement("input");
+        input.placeholder = placeholder;
+        const list = document.createElement("div");
+        list.className = "chips";
+
+        function renderList() {
+          list.innerHTML = "";
+          (state[key] ?? []).forEach((v, idx) => {
+            const c = document.createElement("div");
+            c.className = "chip";
+            c.dataset.on = "true";
+            c.textContent = v + " ×";
+            c.onclick = () => { state[key] = state[key].filter((_, i) => i !== idx); renderList(); };
+            list.appendChild(c);
+          });
+        }
+
+        input.onkeydown = (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const v = input.value.trim();
+          if (!v) return;
+          state[key] = [...(state[key] ?? []), v];
+          input.value = "";
+          renderList();
+        };
+
+        wrap.appendChild(lab);
+        wrap.appendChild(input);
+        wrap.appendChild(list);
+        renderList();
+        return wrap;
+      }
+
+      function showErrors(fieldErrors) {
+        const keys = Object.keys(fieldErrors ?? {});
+        if (!keys.length) { errorsEl.style.display = "none"; errorsEl.innerHTML = ""; return; }
+        errorsEl.style.display = "block";
+        errorsEl.innerHTML = "<b>Fix these:</b><br/>";
+        keys.forEach(k => {
+          const line = document.createElement("div");
+          line.innerHTML = `<span class="mono">${k}</span>: ${(fieldErrors[k] ?? []).join(" | ")}`;
+          errorsEl.appendChild(line);
+        });
+      }
+
+      function normalize() {
+        return {
+          ...state,
+          website: state.website?.trim() ? state.website.trim() : undefined,
+          avgContractValueUsd: state.avgContractValueUsd === "" ? undefined : Number(state.avgContractValueUsd),
+          salesCycleDays: Number(state.salesCycleDays)
+        };
+      }
+
+      async function callTool(name, payload) {
+        if (!window.openai?.callTool) throw new Error("Not running inside Apps runtime.");
+        return await window.openai.callTool(name, payload);
+      }
+
+      function renderStep() {
+        renderStepper();
+        outputsEl.style.display = "none";
+        stepEl.innerHTML = "";
+
+        if (step === 0) {
+          const r = document.createElement("div");
+          r.appendChild(field("Client name", "clientName", "e.g., AcmeAI"));
+          r.appendChild(field("Website (optional)", "website", "https://..."));
+          r.appendChild(selectField("Segment", "segment", SEGMENTS));
+          r.appendChild(field("Product category", "productCategory", "e.g., IAM for mid-market"));
+          r.appendChild(textarea("One-liner (min 40 chars)", "oneLiner", "What it does + for whom + why now."));
+          stepEl.appendChild(r);
+        }
+
+        if (step === 1) {
+          const r = document.createElement("div");
+          r.appendChild(chipGroup("Verticals (1+)", VERTICALS, state.verticals, (v) => { state.verticals = v; renderStep(); }));
+          if ((state.verticals ?? []).includes("Other")) r.appendChild(field("Other vertical (required)", "otherVertical", "Type vertical"));
+          r.appendChild(chipGroup("Geos (1+)", GEOS, state.geos, (v) => state.geos = v));
+          r.appendChild(selectField("Headcount band", "targetHeadcountBand", HEADCOUNT));
+          stepEl.appendChild(r);
+        }
+
+        if (step === 2) {
+          const r = document.createElement("div");
+          r.appendChild(listEditor("Primary buyer roles", "primaryBuyerRoles", "e.g., CIO, Head of Security"));
+          r.appendChild(listEditor("Top pains (min 20 chars each; add 2+)", "pains", "Describe pains concretely"));
+          r.appendChild(listEditor("Differentiation (min 20 chars each; add 2+)", "differentiation", "What is uniquely true?"));
+          r.appendChild(listEditor("Competitors (add 1+)", "competitors", "e.g., Okta"));
+          stepEl.appendChild(r);
+        }
+
+        if (step === 3) {
+          const r = document.createElement("div");
+          r.appendChild(selectField("Sales motion", "salesMotion", SALES));
+          r.appendChild(field("Sales cycle (days)", "salesCycleDays", "e.g., 60", "number"));
+          r.appendChild(field("Avg contract value USD (optional)", "avgContractValueUsd", "e.g., 25000", "number"));
+          r.appendChild(chipGroup("Signals available (1+)", SIGNALS, state.dataSignalsAvailable, (v) => state.dataSignalsAvailable = v));
+          stepEl.appendChild(r);
+        }
+
+        if (step === 4) {
+          const r = document.createElement("div");
+          r.appendChild(textarea("Review payload (server validates this)", "__review", ""));
+          r.querySelector("textarea").value = JSON.stringify(normalize(), null, 2);
+          r.querySelector("textarea").readOnly = true;
+          stepEl.appendChild(r);
+        }
+      }
+
+      document.querySelector("#backBtn").onclick = () => { step = Math.max(0, step - 1); renderStep(); };
+      document.querySelector("#nextBtn").onclick = () => { step = Math.min(steps.length - 1, step + 1); renderStep(); };
+
+      document.querySelector("#validateBtn").onclick = async () => {
+        const resp = await callTool("validate_abm_intake", { workspaceId, intake: normalize() });
+        showErrors(resp?.structuredContent?.fieldErrors ?? {});
+      };
+
+      document.querySelector("#createBtn").onclick = async () => {
+        const resp = await callTool("create_abm_project", { workspaceId, intake: normalize() });
+        const sc = resp?.structuredContent ?? {};
+        showErrors(sc.fieldErrors ?? {});
+        if (sc.ok) {
+          outputsEl.style.display = "block";
+          briefBox.value = JSON.stringify(sc.abmBrief, null, 2);
+          csvBox.value = sc.scoringTemplate?.csv ?? "";
+        }
+      };
+
+      document.querySelector("#copyCsvBtn").onclick = async () => {
+        await navigator.clipboard.writeText(csvBox.value || "");
+        alert("CSV copied.");
+      };
+
+      async function refreshProjects() {
+        const resp = await callTool("list_abm_projects", { workspaceId, limit: 25 });
+        const rows = resp?.structuredContent?.projects ?? [];
+        projectsTable.innerHTML = `
+          <thead><tr>
+            <th>Client</th><th>Created</th><th>Project ID</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td>${r.clientName}</td>
+                <td>${new Date(r.createdAt).toLocaleString()}</td>
+                <td class="mono">${r.projectId}</td>
+                <td>
+                  <button class="secondary" data-load="${r.projectId}">Load</button>
+                  <button class="danger" data-del="${r.projectId}">Delete</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        `;
+
+        projectsTable.querySelectorAll("button[data-load]").forEach(b => {
+          b.onclick = async () => {
+            const id = b.getAttribute("data-load");
+            const g = await callTool("get_abm_project", { workspaceId, projectId: id });
+            const p = g?.structuredContent?.project;
+            if (!p) return alert("Not found.");
+            setTab("intake");
+            state = { ...state, ...p.intake, avgContractValueUsd: p.intake.avgContractValueUsd ?? "" };
+            step = 4;
+            renderStep();
+            outputsEl.style.display = "block";
+            briefBox.value = JSON.stringify(p.outputs.brief, null, 2);
+            csvBox.value = p.outputs.scoring?.csv ?? "";
+          };
+        });
+
+        projectsTable.querySelectorAll("button[data-del]").forEach(b => {
+          b.onclick = async () => {
+            const id = b.getAttribute("data-del");
+            await callTool("delete_abm_project", { workspaceId, projectId: id });
+            await refreshProjects();
+          };
+        });
+      }
+
+      document.querySelector("#refreshProjectsBtn").onclick = refreshProjects;
+
+      renderStep();
+      // optional: preload list when tab opened
+      tabProjects.onclick = async () => { setTab("projects"); await refreshProjects(); };
+    </script>
+  </body>
+</html>
