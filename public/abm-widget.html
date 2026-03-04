@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -39,7 +39,7 @@
   </head>
   <body>
     <div class="card">
-      <h2>GTMHelix — ABM Intake & Scoring</h2>
+      <h2>GTMHelix â€” ABM Intake & Scoring</h2>
       <div class="muted">Guided intake only. Vague inputs get rejected.</div>
 
       <div class="tabs">
@@ -105,12 +105,29 @@
       const csvBox = document.querySelector("#csvBox");
       const projectsTable = document.querySelector("#projectsTable");
 
-      let workspaceId = window.openai?.widgetState?.workspaceId;
-      if (!workspaceId) {
-        workspaceId = crypto.randomUUID();
-        window.openai?.setWidgetState?.({ workspaceId });
+      async function callTool(name, payload) {
+        if (!window.openai?.callTool) throw new Error("Not running inside Apps runtime.");
+        return await window.openai.callTool(name, payload);
       }
 
+      let workspaceId = window.openai?.widgetState?.workspaceId;
+
+      async function ensureWorkspaceId() {
+        if (workspaceId) return workspaceId;
+
+        try {
+          const w = await callTool("whoami", {});
+          workspaceId = w?.structuredContent?.workspaceId || null;
+        } catch (e) {
+          workspaceId = null;
+        }
+
+        if (!workspaceId) workspaceId = crypto.randomUUID(); // local/dev fallback
+        window.openai?.setWidgetState?.({ workspaceId });
+        return workspaceId;
+      }
+
+      await ensureWorkspaceId();
       let step = 0;
       const steps = ["Basics","ICP","Positioning","GTM","Review"];
 
@@ -243,7 +260,7 @@
             const c = document.createElement("div");
             c.className = "chip";
             c.dataset.on = "true";
-            c.textContent = v + " ×";
+            c.textContent = v + " Ã—";
             c.onclick = () => { state[key] = state[key].filter((_, i) => i !== idx); renderList(); };
             list.appendChild(c);
           });
@@ -285,11 +302,6 @@
           avgContractValueUsd: state.avgContractValueUsd === "" ? undefined : Number(state.avgContractValueUsd),
           salesCycleDays: Number(state.salesCycleDays)
         };
-      }
-
-      async function callTool(name, payload) {
-        if (!window.openai?.callTool) throw new Error("Not running inside Apps runtime.");
-        return await window.openai.callTool(name, payload);
       }
 
       function renderStep() {
@@ -422,3 +434,6 @@
     </script>
   </body>
 </html>
+
+
+

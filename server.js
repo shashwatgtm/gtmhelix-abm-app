@@ -1,7 +1,10 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { intakeSchema as abmIntakeSchema, validationErrorsToFieldMap as abmValidationErrorsToFieldMap, buildAbmBrief as abmBuildAbmBrief, buildScoringTemplate as abmBuildScoringTemplate } from "./src/abm.js";
+import { resolveWorkspaceId, initWorkspaceStore } from "./src/workspace.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -21,12 +24,35 @@ import { verifyToken } from "@clerk/backend";
  * - DISABLE_AUTH="true"  (dev escape hatch)
  */
 const AUTH_DISABLED = (process.env.DISABLE_AUTH || "").toLowerCase() === "true";
+if (AUTH_DISABLED && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+  throw new Error("Refusing to start: DISABLE_AUTH=true in production.");
+}
 const CLERK_JWT_KEY = process.env.CLERK_JWT_KEY || "";
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || "";
 const CLERK_AUTHORIZED_PARTIES = (process.env.CLERK_AUTHORIZED_PARTIES || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://chatgpt.com")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function pickCorsOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin || typeof origin !== "string") return null;
+  if (ALLOWED_ORIGINS.includes("*")) return "*";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : null;
+}
+
+function setCorsHeaders(req, res) {
+  const allow = pickCorsOrigin(req);
+  if (!allow) return false;
+  res.setHeader("Access-Control-Allow-Origin", allow);
+  res.setHeader("Vary", "Origin");
+    return true;
+}
 
 function sendJson(res, status, obj) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -138,143 +164,6 @@ const GEOS = [
   "MENA"
 ];
 
-const intakeSchema = z
-  .object({
-    clientName: z.string().min(2),
-    website: z.string().url().optional(),
-    segment: z.enum(SEGMENTS),
-    verticals: z.array(z.enum(VERTICALS)).min(1),
-    otherVertical: z.string().optional(),
-    geos: z.array(z.enum(GEOS)).min(1),
-    productCategory: z.string().min(3),
-    oneLiner: z.string().min(40), // anti-vague gate
-    primaryBuyerRoles: z.array(z.string().min(3)).min(1),
-    pains: z.array(z.string().min(20)).min(2),
-    differentiation: z.array(z.string().min(20)).min(2),
-    competitors: z.array(z.string().min(2)).min(1),
-    avgContractValueUsd: z.number().int().min(1000).optional(),
-    targetHeadcountBand: z.enum(["1-50", "51-200", "201-1000", "1001-5000", "5000+"]),
-    salesMotion: z.enum(["Sales-led", "PLG", "Hybrid", "Partner-led"]),
-    salesCycleDays: z.number().int().min(7).max(540),
-    dataSignalsAvailable: z
-      .array(z.enum(["Intent", "Technographics", "Hiring", "Funding", "Website activity", "None"]))
-      .min(1)
-  })
-  .superRefine((val, ctx) => {
-    if (val.verticals.includes("Other") && (!val.otherVertical || val.otherVertical.trim().length < 3)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["otherVertical"],
-        message: "If you select Other, you must specify the vertical (min 3 chars)."
-      });
-    }
-  });
-
-function validationErrorsToFieldMap(zodError) {
-  const out = {};
-  for (const issue of zodError.issues ?? []) {
-    const key = (issue.path?.join(".") ?? "form").toString();
-    out[key] = out[key] ? [...out[key], issue.message] : [issue.message];
-  }
-  return out;
-}
-
-function buildAbmBrief(intake) {
-  const verticalLabel = intake.verticals.includes("Other") ? intake.otherVertical : intake.verticals.join(", ");
-  return {
-    icp: {
-      segment: intake.segment,
-      verticals: verticalLabel,
-      geos: intake.geos,
-      headcount: intake.targetHeadcountBand,
-      salesMotion: intake.salesMotion,
-      primaryBuyers: intake.primaryBuyerRoles
-    },
-    positioning: {
-      oneLiner: intake.oneLiner,
-      pains: intake.pains,
-      differentiation: intake.differentiation,
-      competitors: intake.competitors
-    },
-    channelPlan: [
-      "Tier A: LinkedIn outbound + email + exec-to-exec intro + 1:1 landing page",
-      "Tier B: LinkedIn + email + vertical webinar/roundtable + retargeting",
-      "Tier C: Content syndication + nurture + periodic re-score"
-    ],
-    measurement: [
-      "Coverage: % accounts with contacts in 3+ buying roles",
-      "Engagement: reply rate + meeting rate by tier",
-      "Pipeline: SQL/SQO + influenced pipeline by tier",
-      "Efficiency: cost per meeting + time-to-first-meeting"
-    ]
-  };
-}
-
-function csvEscape(v) {
-  const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function buildScoringTemplate(intake) {
-  const weights = {
-    firmographic_fit: 30,
-    pain_urgency: 25,
-    intent_triggers: 25,
-    reachability: 20
-  };
-
-  const columns = [
-    "Account Name",
-    "Website/Domain",
-    "Geo",
-    "Industry/Vertical",
-    "Headcount",
-    "Revenue Band (optional)",
-    "Buying Committee Roles",
-    "Current Stack (optional)",
-    "Trigger Signals Observed",
-    "Firmographic Fit (0-30)",
-    "Pain Urgency (0-25)",
-    "Intent/Triggers (0-25)",
-    "Reachability (0-20)",
-    "Total Score (0-100)",
-    "Tier (A/B/C)",
-    "Notes"
-  ];
-
-  const tieringRules = [
-    "Tier A: 80–100 (1:1 + exec air cover)",
-    "Tier B: 60–79 (1:few by vertical/geo)",
-    "Tier C: <60 (nurture/recycle)"
-  ];
-
-  const sample = {
-    "Account Name": "ExampleCo",
-    "Website/Domain": "example.com",
-    Geo: intake.geos[0],
-    "Industry/Vertical": intake.verticals.includes("Other") ? intake.otherVertical : intake.verticals[0],
-    Headcount: intake.targetHeadcountBand,
-    "Revenue Band (optional)": "",
-    "Buying Committee Roles": intake.primaryBuyerRoles.join("; "),
-    "Current Stack (optional)": "",
-    "Trigger Signals Observed": "Hiring; Website activity",
-    "Firmographic Fit (0-30)": 24,
-    "Pain Urgency (0-25)": 18,
-    "Intent/Triggers (0-25)": 15,
-    "Reachability (0-20)": 12,
-    "Total Score (0-100)": 69,
-    "Tier (A/B/C)": "B",
-    Notes: "Good fit; moderate urgency; build intent."
-  };
-
-  const header = columns.join(",");
-  const row = columns.map((c) => csvEscape(sample[c])).join(",");
-  const csv = `${header}\n${row}\n`;
-
-  return { weights, columns, tieringRules, sampleRows: [sample], csv };
-}
-
 /**
  * Storage:
  * - Local dev default: JSON file
@@ -303,6 +192,11 @@ async function initPg() {
       outputs JSONB NOT NULL
     );
     CREATE INDEX IF NOT EXISTS abm_projects_workspace_idx ON abm_projects(workspace_id);
+    CREATE TABLE IF NOT EXISTS abm_workspaces (
+      tenant_id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
@@ -428,9 +322,10 @@ function normalizeIntakeArgs(raw) {
   return { intake: null, callerWorkspaceId: raw.workspaceId || null };
 }
 
-function createMcp(auth) {
+async function createMcp(auth) {
   const mcp = new McpServer({ name: "gtmhelix-abm", version: "0.1.0" });
-  const workspaceId = auth.tenantId;
+  await initWorkspaceStore({ pool });
+  const workspaceId = await resolveWorkspaceId({ tenantId: auth.tenantId, pool });
 
   // UI widget
   mcp.registerResource("abm-widget", "ui://widget/abm.html", {}, async () => ({
@@ -485,11 +380,11 @@ function createMcp(auth) {
         });
       }
 
-      const parsed = intakeSchema.safeParse(intake);
+      const parsed = abmIntakeSchema.safeParse(intake);
       if (!parsed.success) {
         return reply({
           message: "Fix the highlighted fields before generation.",
-          structuredContent: { ok: false, fieldErrors: validationErrorsToFieldMap(parsed.error), draftIntake: intake }
+          structuredContent: { ok: false, fieldErrors: abmValidationErrorsToFieldMap(parsed.error), draftIntake: intake }
         });
       }
 
@@ -517,16 +412,16 @@ function createMcp(auth) {
         });
       }
 
-      const parsed = intakeSchema.safeParse(intake);
+      const parsed = abmIntakeSchema.safeParse(intake);
       if (!parsed.success) {
         return reply({
-          message: "Cannot create project — intake is incomplete/vague.",
-          structuredContent: { ok: false, fieldErrors: validationErrorsToFieldMap(parsed.error), draftIntake: intake }
+          message: "Cannot create project â€” intake is incomplete/vague.",
+          structuredContent: { ok: false, fieldErrors: abmValidationErrorsToFieldMap(parsed.error), draftIntake: intake }
         });
       }
 
-      const brief = buildAbmBrief(parsed.data);
-      const scoring = buildScoringTemplate(parsed.data);
+      const brief = abmBuildAbmBrief(parsed.data);
+      const scoring = abmBuildScoringTemplate(parsed.data);
       const outputs = { brief, scoring };
 
       const record = await createProject({ workspaceId, intake: parsed.data, outputs });
@@ -611,9 +506,9 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
+    if (!setCorsHeaders(req, res)) { return res.writeHead(403).end("Origin not allowed."); }
     res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
       "Access-Control-Allow-Headers": "content-type, mcp-session-id, authorization",
       "Access-Control-Expose-Headers": "Mcp-Session-Id"
     });
@@ -625,10 +520,8 @@ const httpServer = createServer(async (req, res) => {
     const auth = await requireAuth(req, res);
     if (!auth) return;
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
-
-    const mcp = createMcp(auth);
+    if (!setCorsHeaders(req, res)) { return res.writeHead(403).end("Origin not allowed."); }
+    const mcp = await createMcp(auth);
     const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
 
     res.on("close", () => {
@@ -657,3 +550,18 @@ httpServer.listen(PORT, () => {
       : "AUTH: ENABLED (expects Authorization: Bearer <Clerk session JWT>)"
   );
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
