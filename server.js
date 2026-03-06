@@ -41,7 +41,7 @@ const CLERK_AUTHORIZED_PARTIES = (process.env.CLERK_AUTHORIZED_PARTIES || "")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://chatgpt.com")
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://chatgpt.com,https://chat.openai.com")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
