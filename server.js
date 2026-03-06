@@ -5,10 +5,16 @@ import { join } from "node:path";
 import {
   abmProjectSchema,
   portfolioSchema,
+  programSetupSchema,
   validationErrorsToFieldMap,
   buildAbmProjectIntel,
   prioritizePortfolio
 } from "./src/abm.js";
+import {
+  parseCsv,
+  mapCsvRowToProject,
+  buildBatchOutputCsv
+} from "./src/batch.js";
 import { enrichBusinessOptional, mergeExploriumIntoProject } from "./src/explorium.js";
 import { resolveWorkspaceId, initWorkspaceStore } from "./src/workspace.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -404,7 +410,19 @@ function normalizePortfolioArgs(raw) {
    ENRICHMENT HELPERS
 ------------------------------ */
 
-async function enrichProjectOptionally(project) {
+async function enrichProjectOptionally(project, enrichmentAllowed = true) {
+  if (!enrichmentAllowed) {
+    return {
+      enrichment: {
+        ok: true,
+        matched: false,
+        enrichmentAvailable: false,
+        warning: "Explorium enrichment skipped by policy."
+      },
+      mergedProject: project
+    };
+  }
+
   const enrichment = await enrichBusinessOptional({
     accountName: project.account.accountName,
     domain: project.account.domain,
@@ -421,7 +439,7 @@ async function enrichProjectOptionally(project) {
 ------------------------------ */
 
 async function createMcp(auth) {
-  const mcp = new McpServer({ name: "gtmhelix-abm", version: "1.1.0" });
+  const mcp = new McpServer({ name: "gtmhelix-abm", version: "1.2.0" });
 
   await initWorkspaceStore({ pool });
   const workspaceId = await resolveWorkspaceId({ tenantId: auth.tenantId, pool });
@@ -434,7 +452,7 @@ async function createMcp(auth) {
         text: widgetHtml,
         _meta: {
           "openai/widgetDescription":
-            "B2B ABM intelligence engine: score accounts, enrich with Explorium, classify buying stage, identify committee gaps, and generate plays.",
+            "B2B ABM intelligence engine: capture setup defaults once, score single accounts or CSV batches, optionally enrich with Explorium, and generate orchestration-ready outputs.",
           "openai/widgetPrefersBorder": true,
           "openai/widgetCSP": {
             connect_domains: ["https://chatgpt.com", "https://chat.openai.com", "https://*.railway.app"],
@@ -457,6 +475,41 @@ async function createMcp(auth) {
       return reply({
         message: "Auth context.",
         structuredContent: { ok: true, userId: auth.userId, orgId: auth.orgId, workspaceId }
+      });
+    }
+  );
+
+  mcp.registerTool(
+    "setup_abm_program",
+    {
+      title: "Setup ABM program defaults",
+      description:
+        "Use this after asking the user 4-5 setup questions once for the whole batch: client/product, objective, default ICP, target buying roles, execution owner, and whether factual enrichment is allowed. Return normalized defaults that can be reused for single-account or CSV batch scoring.",
+      inputSchema: z.any(),
+      annotations: { readOnlyHint: true }
+    },
+    async (rawArgs) => {
+      const parsed = programSetupSchema.safeParse(rawArgs);
+      if (!parsed.success) {
+        return reply({
+          message: "Program setup input is invalid.",
+          structuredContent: {
+            ok: false,
+            fieldErrors: validationErrorsToFieldMap(parsed.error),
+            draftSetup: rawArgs
+          }
+        });
+      }
+
+      return reply({
+        message: "Program defaults captured.",
+        structuredContent: {
+          ok: true,
+          workspaceId,
+          setup: parsed.data,
+          nextStep:
+            "Ask the user to paste CSV content or upload a sheet and then use score_abm_csv_batch with these defaults."
+        }
       });
     }
   );
@@ -495,7 +548,7 @@ async function createMcp(auth) {
     {
       title: "Score ABM account",
       description:
-        "Use this to compute ABM intelligence for a single B2B account: fit, intent, engagement, committee coverage, buying stage, tier, risks, plays, and optional Explorium enrichment.",
+        "Use this to compute ABM intelligence for a single B2B account. Use program setup defaults where available. Optional Explorium enrichment improves factual completeness but is never required.",
       inputSchema: z.any(),
       annotations: { readOnlyHint: true }
     },
@@ -520,7 +573,10 @@ async function createMcp(auth) {
         });
       }
 
-      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data);
+      const enrichmentAllowed =
+        parsed.data.programDefaults?.enrichmentAllowed !== false;
+
+      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, enrichmentAllowed);
       const intel = buildAbmProjectIntel(mergedProject);
 
       return reply({
@@ -531,6 +587,163 @@ async function createMcp(auth) {
           clientName: mergedProject.clientName,
           enrichment,
           intelligence: intel
+        }
+      });
+    }
+  );
+
+  mcp.registerTool(
+    "score_abm_csv_batch",
+    {
+      title: "Score ABM CSV batch",
+      description:
+        "Use this after setup_abm_program. Accepts CSV text plus batch defaults, scores every row, optionally enriches missing factual data with Explorium, and returns both structured results and an orchestration-ready CSV output. This is the main tool for 25-1000 account ABM workflows.",
+      inputSchema: z.object({
+        defaults: z.any(),
+        csvText: z.string().min(10),
+        enrichMissingFacts: z.boolean().optional().default(true),
+        topN: z.number().int().min(1).max(1000).optional().default(50)
+      }).passthrough(),
+      annotations: { readOnlyHint: true }
+    },
+    async ({ defaults, csvText, enrichMissingFacts, topN }) => {
+      const setupParsed = programSetupSchema.safeParse(defaults);
+      if (!setupParsed.success) {
+        return reply({
+          message: "Batch defaults are invalid.",
+          structuredContent: {
+            ok: false,
+            fieldErrors: validationErrorsToFieldMap(setupParsed.error),
+            draftSetup: defaults
+          }
+        });
+      }
+
+      let rows;
+      try {
+        rows = parseCsv(csvText);
+      } catch (e) {
+        return reply({
+          message: "CSV could not be parsed.",
+          structuredContent: {
+            ok: false,
+            fieldErrors: { csvText: [e.message] }
+          }
+        });
+      }
+
+      const scoredRows = [];
+      const rowErrors = [];
+
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const projectCandidate = mapCsvRowToProject(row, setupParsed.data);
+        const parsed = abmProjectSchema.safeParse(projectCandidate);
+
+        if (!parsed.success) {
+          rowErrors.push({
+            rowNumber: i + 2,
+            accountName: row.account_name || row.accountName || "",
+            errors: validationErrorsToFieldMap(parsed.error)
+          });
+          continue;
+        }
+
+        const allowEnrichment = setupParsed.data.enrichmentAllowed !== false && enrichMissingFacts === true;
+        const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, allowEnrichment);
+        const intelligence = buildAbmProjectIntel(mergedProject);
+
+        scoredRows.push({
+          rowNumber: i + 2,
+          clientName: mergedProject.clientName,
+          accountName: mergedProject.account.accountName,
+          accountDomain: mergedProject.account.domain || "",
+          vertical: mergedProject.account.vertical,
+          region: mergedProject.account.region,
+          segment: mergedProject.account.segment,
+          objective: mergedProject.objective,
+          productLine: mergedProject.productLine,
+          totalScore: intelligence.totalScore,
+          tier: intelligence.tier,
+          buyingStage: intelligence.buyingStage,
+          stageConfidence: intelligence.stageConfidence,
+          fitScore: intelligence.scores.fit,
+          intentScore: intelligence.scores.intent,
+          committeeCoverageScore: intelligence.scores.committeeCoverage,
+          relationshipScore: intelligence.scores.relationship,
+          overallConfidence: intelligence.confidence.overallConfidence,
+          ownerAction:
+            intelligence.tier === "Tier 1"
+              ? "Assign AE/owner to 1:1 plan"
+              : intelligence.tier === "Tier 2"
+                ? "Run tailored 1:few motion"
+                : "Keep in monitored nurture",
+          minimumNextStep: intelligence.executionPlan[0] || "",
+          promotionCriteria:
+            intelligence.tier === "Tier 3"
+              ? "Promote when stakeholder access or credible demand signal appears"
+              : "Advance when buying-stage evidence and committee coverage improve",
+          doNotDo:
+            intelligence.tier === "Tier 3"
+              ? "Do not overinvest in bespoke content or heavy paid spend"
+              : "Do not skip committee mapping",
+          messageHypothesis: intelligence.plays[0] || "",
+          recommendedPlays: intelligence.plays.join(" | "),
+          executionPlan: intelligence.executionPlan.join(" | "),
+          watchouts: intelligence.watchouts.join(" | "),
+          missingRoles: intelligence.explainability.missingRoles.join(" | "),
+          missingDataWarnings: intelligence.explainability.missingDataWarnings.join(" | "),
+          exploriumMatched: enrichment?.matched === true ? "true" : "false",
+          exploriumBusinessId: enrichment?.businessId || "",
+          exploriumWarning: enrichment?.warning || (Array.isArray(enrichment?.warnings) ? enrichment.warnings.join(" | ") : ""),
+          fitReasons: intelligence.explainability.fitReasons.join(" | "),
+          fitRisks: intelligence.explainability.fitRisks.join(" | "),
+          topSignals: intelligence.explainability.topSignals.join(" | "),
+          coveredRoles: intelligence.explainability.coveredRoles.join(" | "),
+          penalties: intelligence.explainability.penalties.join(" | ")
+        });
+      }
+
+      const outputCsv = buildBatchOutputCsv(scoredRows);
+      const prioritized = prioritizePortfolio({
+        accounts: scoredRows
+          .slice()
+          .sort((a, b) => b.totalScore - a.totalScore)
+          .slice(0, topN)
+          .map((r) => ({
+            clientName: r.clientName,
+            objective: r.objective,
+            productLine: r.productLine,
+            account: {
+              accountName: r.accountName,
+              vertical: r.vertical,
+              region: r.region,
+              segment: r.segment
+            },
+            targetRoles: setupParsed.data.defaultTargetRoles
+          }))
+      });
+
+      return reply({
+        message: "CSV batch scored.",
+        structuredContent: {
+          ok: true,
+          workspaceId,
+          summary: {
+            totalRows: rows.length,
+            scoredRows: scoredRows.length,
+            errorRows: rowErrors.length,
+            tier1: scoredRows.filter((r) => r.tier === "Tier 1").length,
+            tier2: scoredRows.filter((r) => r.tier === "Tier 2").length,
+            tier3: scoredRows.filter((r) => r.tier === "Tier 3").length
+          },
+          rowErrors,
+          topAccounts: scoredRows
+            .slice()
+            .sort((a, b) => b.totalScore - a.totalScore)
+            .slice(0, Math.min(topN, scoredRows.length)),
+          outputCsv,
+          portfolioSummary: prioritized.summary
         }
       });
     }
@@ -609,7 +822,10 @@ async function createMcp(auth) {
         });
       }
 
-      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data);
+      const enrichmentAllowed =
+        parsed.data.programDefaults?.enrichmentAllowed !== false;
+
+      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, enrichmentAllowed);
       const intel = buildAbmProjectIntel(mergedProject);
       const outputs = { enrichment, intelligence: intel };
 
