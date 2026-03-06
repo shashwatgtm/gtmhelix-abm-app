@@ -2,7 +2,6 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { intakeSchema as abmIntakeSchema, validationErrorsToFieldMap as abmValidationErrorsToFieldMap, buildAbmBrief as abmBuildAbmBrief, buildScoringTemplate as abmBuildScoringTemplate } from "./src/abm.js";
 import { resolveWorkspaceId, initWorkspaceStore } from "./src/workspace.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -19,16 +18,24 @@ import { verifyToken } from "@clerk/backend";
  * - CLERK_JWT_KEY  (recommended for JWT verification)
  * - CLERK_SECRET_KEY
  *
+ * Strongly recommended for ChatGPT Apps OAuth:
+ * - CLERK_ISSUER=https://your-clerk-domain.clerk.accounts.dev
+ *
  * Optional:
  * - CLERK_AUTHORIZED_PARTIES="http://localhost:8787,https://yourdomain.com"
  * - DISABLE_AUTH="true"  (dev escape hatch)
+ * - APP_BASE_URL="https://your-public-domain"
  */
 const AUTH_DISABLED = (process.env.DISABLE_AUTH || "").toLowerCase() === "true";
 if (AUTH_DISABLED && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
   throw new Error("Refusing to start: DISABLE_AUTH=true in production.");
 }
+
 const CLERK_JWT_KEY = process.env.CLERK_JWT_KEY || "";
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || "";
+const CLERK_ISSUER = (process.env.CLERK_ISSUER || "").replace(/\/+$/, "");
+const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/+$/, "");
+
 const CLERK_AUTHORIZED_PARTIES = (process.env.CLERK_AUTHORIZED_PARTIES || "")
   .split(",")
   .map((s) => s.trim())
@@ -51,11 +58,11 @@ function setCorsHeaders(req, res) {
   if (!allow) return false;
   res.setHeader("Access-Control-Allow-Origin", allow);
   res.setHeader("Vary", "Origin");
-    return true;
+  return true;
 }
 
-function sendJson(res, status, obj) {
-  res.writeHead(status, { "content-type": "application/json" });
+function sendJson(res, status, obj, extraHeaders = {}) {
+  res.writeHead(status, { "content-type": "application/json", ...extraHeaders });
   res.end(JSON.stringify(obj));
 }
 
@@ -64,6 +71,47 @@ function getBearerToken(req) {
   if (!raw || typeof raw !== "string") return null;
   const m = raw.match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : null;
+}
+
+function getExternalBaseUrl(req) {
+  if (APP_BASE_URL) return APP_BASE_URL;
+
+  const protoHeader = req.headers["x-forwarded-proto"];
+  const hostHeader = req.headers["x-forwarded-host"] || req.headers.host;
+
+  const proto = typeof protoHeader === "string" && protoHeader ? protoHeader.split(",")[0].trim() : "http";
+  const host = typeof hostHeader === "string" && hostHeader ? hostHeader.split(",")[0].trim() : "localhost";
+
+  return `${proto}://${host}`;
+}
+
+function buildProtectedResourceMetadata(req) {
+  const baseUrl = getExternalBaseUrl(req);
+  const metadata = {
+    resource: `${baseUrl}/mcp`,
+    bearer_methods_supported: ["header"],
+    resource_documentation: `${baseUrl}/`
+  };
+
+  if (CLERK_ISSUER) {
+    metadata.authorization_servers = [CLERK_ISSUER];
+  }
+
+  return metadata;
+}
+
+function buildWwwAuthenticateHeader(req, errorCode) {
+  const baseUrl = getExternalBaseUrl(req);
+  const params = [
+    'Bearer realm="Helix ABM"',
+    `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`
+  ];
+
+  if (errorCode) {
+    params.push(`error="${errorCode}"`);
+  }
+
+  return params.join(", ");
 }
 
 /**
@@ -92,11 +140,15 @@ async function requireAuth(req, res) {
 
   const token = getBearerToken(req);
   if (!token) {
-    res.writeHead(401, { "WWW-Authenticate": 'Bearer realm="Helix ABM"' });
-    sendJson(res, 401, {
-      error: "Unauthorized",
-      message: "Missing Authorization header. Send: Authorization: Bearer <JWT>"
-    });
+    sendJson(
+      res,
+      401,
+      {
+        error: "Unauthorized",
+        message: "Missing Authorization header. Send: Authorization: Bearer <JWT>"
+      },
+      { "WWW-Authenticate": buildWwwAuthenticateHeader(req, "invalid_token") }
+    );
     return null;
   }
 
@@ -109,8 +161,12 @@ async function requireAuth(req, res) {
 
     const claims = verification?.data ?? verification;
     if (!claims || typeof claims !== "object" || !claims.sub) {
-      res.writeHead(401, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
-      sendJson(res, 401, { error: "Unauthorized", message: "Invalid token." });
+      sendJson(
+        res,
+        401,
+        { error: "Unauthorized", message: "Invalid token." },
+        { "WWW-Authenticate": buildWwwAuthenticateHeader(req, "invalid_token") }
+      );
       return null;
     }
 
@@ -120,8 +176,12 @@ async function requireAuth(req, res) {
 
     return { userId, orgId, tenantId, claims };
   } catch (e) {
-    res.writeHead(401, { "WWW-Authenticate": 'Bearer error="invalid_token"' });
-    sendJson(res, 401, { error: "Unauthorized", message: "Token verification failed." });
+    sendJson(
+      res,
+      401,
+      { error: "Unauthorized", message: "Token verification failed." },
+      { "WWW-Authenticate": buildWwwAuthenticateHeader(req, "invalid_token") }
+    );
     return null;
   }
 }
@@ -275,11 +335,11 @@ async function getProject({ workspaceId, projectId }) {
 
 async function deleteProject({ workspaceId, projectId }) {
   if (pool) {
-    const res = await pool.query(`DELETE FROM abm_projects WHERE workspace_id = $1 AND project_id = $2`, [
+    const result = await pool.query(`DELETE FROM abm_projects WHERE workspace_id = $1 AND project_id = $2`, [
       workspaceId,
       projectId
     ]);
-    return res.rowCount > 0;
+    return result.rowCount > 0;
   }
 
   ensureFileDb();
@@ -305,18 +365,15 @@ function reply({ message, structuredContent }) {
 function normalizeIntakeArgs(raw) {
   if (!raw || typeof raw !== "object") return { intake: null, callerWorkspaceId: null };
 
-  // (3) accidental nesting: { intake: { workspaceId, intake: {...} } }
   if (raw.intake && typeof raw.intake === "object" && raw.intake.intake && typeof raw.intake.intake === "object") {
     const callerWorkspaceId = raw.intake.workspaceId || raw.workspaceId || null;
     return { intake: raw.intake.intake, callerWorkspaceId };
   }
 
-  // (1)/(2): { intake: {...} }
   if (raw.intake && typeof raw.intake === "object" && raw.intake.clientName) {
     return { intake: raw.intake, callerWorkspaceId: raw.workspaceId || null };
   }
 
-  // (4): raw itself is the intake
   if (raw.clientName) return { intake: raw, callerWorkspaceId: raw.workspaceId || null };
 
   return { intake: null, callerWorkspaceId: raw.workspaceId || null };
@@ -327,7 +384,6 @@ async function createMcp(auth) {
   await initWorkspaceStore({ pool });
   const workspaceId = await resolveWorkspaceId({ tenantId: auth.tenantId, pool });
 
-  // UI widget
   mcp.registerResource("abm-widget", "ui://widget/abm.html", {}, async () => ({
     contents: [
       {
@@ -362,7 +418,6 @@ async function createMcp(auth) {
     }
   );
 
-  // IMPORTANT: permissive inputSchema to avoid MCP -32602 for common caller mistakes.
   mcp.registerTool(
     "validate_abm_intake",
     {
@@ -375,7 +430,7 @@ async function createMcp(auth) {
       const { intake } = normalizeIntakeArgs(rawArgs);
       if (!intake) {
         return reply({
-          message: "Invalid input shape. Pass JSON like: { \"intake\": { ... } }",
+          message: 'Invalid input shape. Pass JSON like: { "intake": { ... } }',
           structuredContent: { ok: false, fieldErrors: { form: ["Missing intake object."] }, draftIntake: rawArgs }
         });
       }
@@ -407,7 +462,7 @@ async function createMcp(auth) {
       const { intake } = normalizeIntakeArgs(rawArgs);
       if (!intake) {
         return reply({
-          message: "Invalid input shape. Pass JSON like: { \"intake\": { ... } }",
+          message: 'Invalid input shape. Pass JSON like: { "intake": { ... } }',
           structuredContent: { ok: false, fieldErrors: { form: ["Missing intake object."] }, draftIntake: rawArgs }
         });
       }
@@ -415,7 +470,7 @@ async function createMcp(auth) {
       const parsed = abmIntakeSchema.safeParse(intake);
       if (!parsed.success) {
         return reply({
-          message: "Cannot create project â€” intake is incomplete/vague.",
+          message: "Cannot create project - intake is incomplete or vague.",
           structuredContent: { ok: false, fieldErrors: abmValidationErrorsToFieldMap(parsed.error), draftIntake: intake }
         });
       }
@@ -499,16 +554,23 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/") {
     return res.writeHead(200, { "content-type": "text/plain" }).end("GTMHelix ABM MCP server is running.");
   }
+
   if (req.method === "GET" && url.pathname === "/health") {
     return res
       .writeHead(200, { "content-type": "application/json" })
       .end(JSON.stringify({ ok: true, db: Boolean(pool), authDisabled: AUTH_DISABLED }));
   }
 
+  if (req.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+    return sendJson(res, 200, buildProtectedResourceMetadata(req));
+  }
+
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
-    if (!setCorsHeaders(req, res)) { return res.writeHead(403).end("Origin not allowed."); }
+    if (!setCorsHeaders(req, res)) {
+      return res.writeHead(403).end("Origin not allowed.");
+    }
     res.writeHead(204, {
-            "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
+      "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
       "Access-Control-Allow-Headers": "content-type, mcp-session-id, authorization",
       "Access-Control-Expose-Headers": "Mcp-Session-Id"
     });
@@ -520,7 +582,10 @@ const httpServer = createServer(async (req, res) => {
     const auth = await requireAuth(req, res);
     if (!auth) return;
 
-    if (!setCorsHeaders(req, res)) { return res.writeHead(403).end("Origin not allowed."); }
+    if (!setCorsHeaders(req, res)) {
+      return res.writeHead(403).end("Origin not allowed.");
+    }
+
     const mcp = await createMcp(auth);
     const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
 
@@ -549,19 +614,9 @@ httpServer.listen(PORT, () => {
       ? "AUTH: DISABLED (DISABLE_AUTH=true)"
       : "AUTH: ENABLED (expects Authorization: Bearer <Clerk session JWT>)"
   );
+  console.log(
+    CLERK_ISSUER
+      ? `OAUTH METADATA: ENABLED via ${CLERK_ISSUER}`
+      : "OAUTH METADATA: PARTIAL - set CLERK_ISSUER for authorization_servers metadata"
+  );
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
