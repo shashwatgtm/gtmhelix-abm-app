@@ -27,10 +27,10 @@ import { verifyToken } from "@clerk/backend";
  * - APP_BASE_URL="https://your-public-domain"
  */
 const AUTH_DISABLED = (process.env.DISABLE_AUTH || "").toLowerCase() === "true";
-if (AUTH_DISABLED && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
-  throw new Error("Refusing to start: DISABLE_AUTH=true in production.");
-}
-
+// TEMP: allow disabling auth for ChatGPT MCP testing
+// if (AUTH_DISABLED && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+//   throw new Error("Refusing to start: DISABLE_AUTH=true in production.");
+// }
 const CLERK_JWT_KEY = process.env.CLERK_JWT_KEY || "";
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || "";
 const CLERK_ISSUER = (process.env.CLERK_ISSUER || "").replace(/\/+$/, "");
