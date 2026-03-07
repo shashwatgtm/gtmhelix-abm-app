@@ -793,25 +793,13 @@ async function createMcp(auth) {
 
       const outputCsv = buildBatchOutputCsv(scoredRows);
 
-      const prioritized = prioritizePortfolio({
-        accounts: scoredRows
-          .slice()
-          .sort((a, b) => b.totalScore - a.totalScore)
-          .slice(0, topN)
-          .map((r) => ({
-            clientName: r.clientName,
-            objective: r.objective,
-            productLine: r.productLine,
-            account: {
-              accountName: r.accountName,
-              vertical: r.vertical,
-              region: r.region,
-              segment: r.segment
-            },
-            targetRoles: setupParsed.data.defaultTargetRoles
-          }))
-      });
-
+const prioritized = {
+  summary: {
+    "Tier 1": scoredRows.filter((r) => r.tier === "Tier 1").length,
+    "Tier 2": scoredRows.filter((r) => r.tier === "Tier 2").length,
+    "Tier 3": scoredRows.filter((r) => r.tier === "Tier 3").length
+  }
+};
       return reply({
         message: "CSV batch scored.",
         structuredContent: {
