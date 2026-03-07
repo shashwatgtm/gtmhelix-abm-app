@@ -1,434 +1,903 @@
 ﻿import { z } from "zod";
 
-/* -----------------------------
-   TAXONOMY
------------------------------- */
+/* ---------------------------------
+   TAXONOMIES
+---------------------------------- */
 
-export const VERTICALS = [
-  "Cybersecurity",
+export const STANDARD_VERTICALS = [
+  "Technology",
+  "Financial Services",
+  "Banking",
+  "Insurance",
   "Fintech",
   "Healthcare",
+  "Life Sciences",
   "Pharma",
-  "Logistics",
-  "TravelTech",
-  "HRtech",
+  "Cybersecurity",
   "Retail",
+  "Consumer Goods",
   "Manufacturing",
-  "Telecom",
+  "Logistics",
+  "Telecommunications",
   "Media",
+  "Energy",
+  "Public Sector",
+  "Education",
+  "HRTech",
+  "TravelTech",
+  "Other"
+];
+
+export const STANDARD_REGIONS = [
+  "North America",
+  "United States",
+  "Canada",
+  "LATAM",
+  "UKI",
+  "DACH",
+  "Nordics",
+  "Europe",
+  "India",
+  "APAC",
+  "ANZ",
+  "MENA",
+  "UAE",
+  "Global",
+  "Other"
+];
+
+export const STANDARD_SEGMENTS = [
+  "SMB",
+  "Mid-Market",
+  "Enterprise",
+  "Strategic Named Account",
   "Public Sector",
   "Other"
 ];
 
-export const REGIONS = [
-  "North America",
-  "UKI",
-  "DACH",
-  "Nordics",
-  "Southern Europe",
-  "India",
-  "SEA",
-  "ANZ",
-  "Middle East",
-  "LATAM",
-  "Global"
-];
-
-export const ACCOUNT_SEGMENTS = [
-  "Enterprise",
-  "Mid-Market",
-  "SMB",
-  "Strategic Named Account",
-  "Channel / Partner"
-];
-
-export const GTM_MOTIONS = [
-  "Enterprise Sales",
+export const STANDARD_MOTIONS = [
+  "Sales-Led",
   "PLG",
   "Hybrid",
+  "Partner-Led",
   "Channel-Led",
-  "Sales-Led"
+  "Other"
 ];
 
-export const BUYING_ROLES = [
-  "Economic Buyer",
-  "Technical Buyer",
-  "Champion",
-  "End User Lead",
-  "Security / Compliance",
-  "Procurement",
-  "Executive Sponsor"
+export const STANDARD_OBJECTIVES = [
+  "Net New",
+  "Expansion",
+  "Cross-Sell",
+  "Upsell",
+  "Retention",
+  "Other"
 ];
 
-/* -----------------------------
+export const STANDARD_STAGES = [
+  "Targeting",
+  "Target",
+  "Awareness",
+  "Engaged",
+  "Discovery",
+  "Evaluation",
+  "Meeting",
+  "Proposal",
+  "Negotiation",
+  "Decision",
+  "Closed Won",
+  "Closed Lost",
+  "No Opportunity"
+];
+
+export const STANDARD_EMPLOYEE_BANDS = [
+  "1-50",
+  "51-200",
+  "201-1000",
+  "1001-5000",
+  "5000+",
+  "Unknown"
+];
+
+const VERTICAL_ALIASES = new Map([
+  ["tech", "Technology"],
+  ["technology", "Technology"],
+  ["software", "Technology"],
+  ["saas", "Technology"],
+  ["b2b saas", "Technology"],
+  ["it", "Technology"],
+
+  ["financial services", "Financial Services"],
+  ["financial-services", "Financial Services"],
+  ["fsi", "Financial Services"],
+  ["bfsi", "Financial Services"],
+
+  ["bank", "Banking"],
+  ["banking", "Banking"],
+
+  ["insurance", "Insurance"],
+  ["insurtech", "Insurance"],
+
+  ["fintech", "Fintech"],
+  ["payments", "Fintech"],
+
+  ["health", "Healthcare"],
+  ["healthcare", "Healthcare"],
+  ["health care", "Healthcare"],
+  ["payer", "Healthcare"],
+  ["provider", "Healthcare"],
+
+  ["life sciences", "Life Sciences"],
+  ["lifesciences", "Life Sciences"],
+
+  ["pharma", "Pharma"],
+  ["pharmaceuticals", "Pharma"],
+
+  ["security", "Cybersecurity"],
+  ["cyber", "Cybersecurity"],
+  ["cybersecurity", "Cybersecurity"],
+  ["cyber security", "Cybersecurity"],
+
+  ["retail", "Retail"],
+  ["ecommerce", "Retail"],
+  ["e-commerce", "Retail"],
+
+  ["consumer", "Consumer Goods"],
+  ["cpg", "Consumer Goods"],
+  ["consumer goods", "Consumer Goods"],
+
+  ["manufacturing", "Manufacturing"],
+  ["industrial", "Manufacturing"],
+
+  ["logistics", "Logistics"],
+  ["supply chain", "Logistics"],
+  ["transportation", "Logistics"],
+
+  ["telecom", "Telecommunications"],
+  ["telecommunications", "Telecommunications"],
+
+  ["media", "Media"],
+  ["advertising", "Media"],
+
+  ["energy", "Energy"],
+  ["utilities", "Energy"],
+
+  ["public sector", "Public Sector"],
+  ["government", "Public Sector"],
+  ["gov", "Public Sector"],
+
+  ["education", "Education"],
+  ["edtech", "Education"],
+
+  ["hrtech", "HRTech"],
+  ["hr tech", "HRTech"],
+  ["people tech", "HRTech"],
+
+  ["travel", "TravelTech"],
+  ["traveltech", "TravelTech"],
+  ["travel tech", "TravelTech"],
+
+  ["other", "Other"]
+]);
+
+const REGION_ALIASES = new Map([
+  ["north america", "North America"],
+  ["na", "North America"],
+  ["usa", "United States"],
+  ["us", "United States"],
+  ["united states", "United States"],
+  ["canada", "Canada"],
+  ["latin america", "LATAM"],
+  ["latam", "LATAM"],
+  ["uk", "UKI"],
+  ["ireland", "UKI"],
+  ["uki", "UKI"],
+  ["dach", "DACH"],
+  ["nordics", "Nordics"],
+  ["europe", "Europe"],
+  ["emea", "Europe"],
+  ["india", "India"],
+  ["apac", "APAC"],
+  ["asia pacific", "APAC"],
+  ["anz", "ANZ"],
+  ["mena", "MENA"],
+  ["uae", "UAE"],
+  ["global", "Global"],
+  ["other", "Other"]
+]);
+
+const SEGMENT_ALIASES = new Map([
+  ["smb", "SMB"],
+  ["small business", "SMB"],
+  ["mid-market", "Mid-Market"],
+  ["mid market", "Mid-Market"],
+  ["midmarket", "Mid-Market"],
+  ["enterprise", "Enterprise"],
+  ["strategic named account", "Strategic Named Account"],
+  ["named account", "Strategic Named Account"],
+  ["strategic", "Strategic Named Account"],
+  ["public sector", "Public Sector"],
+  ["other", "Other"]
+]);
+
+const MOTION_ALIASES = new Map([
+  ["sales-led", "Sales-Led"],
+  ["sales led", "Sales-Led"],
+  ["sales", "Sales-Led"],
+  ["plg", "PLG"],
+  ["product-led", "PLG"],
+  ["product led", "PLG"],
+  ["hybrid", "Hybrid"],
+  ["partner-led", "Partner-Led"],
+  ["partner led", "Partner-Led"],
+  ["channel-led", "Channel-Led"],
+  ["channel led", "Channel-Led"],
+  ["other", "Other"]
+]);
+
+const OBJECTIVE_ALIASES = new Map([
+  ["net new", "Net New"],
+  ["new logo", "Net New"],
+  ["expansion", "Expansion"],
+  ["cross-sell", "Cross-Sell"],
+  ["cross sell", "Cross-Sell"],
+  ["upsell", "Upsell"],
+  ["retention", "Retention"],
+  ["other", "Other"]
+]);
+
+const STAGE_ALIASES = new Map([
+  ["targeting", "Targeting"],
+  ["target", "Target"],
+  ["awareness", "Awareness"],
+  ["engaged", "Engaged"],
+  ["discovery", "Discovery"],
+  ["evaluation", "Evaluation"],
+  ["meeting", "Meeting"],
+  ["proposal", "Proposal"],
+  ["negotiation", "Negotiation"],
+  ["decision", "Decision"],
+  ["closed won", "Closed Won"],
+  ["closed lost", "Closed Lost"],
+  ["no opportunity", "No Opportunity"]
+]);
+
+const ROLE_ALIASES = new Map([
+  ["economic buyer", "Economic Buyer"],
+  ["budget owner", "Economic Buyer"],
+  ["executive sponsor", "Economic Buyer"],
+  ["cfo", "Economic Buyer"],
+  ["cro", "Economic Buyer"],
+  ["coo", "Economic Buyer"],
+  ["ceo", "Economic Buyer"],
+  ["gm", "Economic Buyer"],
+  ["general manager", "Economic Buyer"],
+
+  ["technical buyer", "Technical Buyer"],
+  ["cio", "Technical Buyer"],
+  ["cto", "Technical Buyer"],
+  ["ciso", "Technical Buyer"],
+  ["chief digital officer", "Technical Buyer"],
+  ["vp it", "Technical Buyer"],
+  ["vp engineering", "Technical Buyer"],
+  ["head of architecture", "Technical Buyer"],
+
+  ["champion", "Champion"],
+  ["user champion", "Champion"],
+  ["revops", "Champion"],
+  ["vp revops", "Champion"],
+  ["director revops", "Champion"],
+  ["marketing ops", "Champion"],
+  ["sales ops", "Champion"],
+  ["program owner", "Champion"],
+
+  ["procurement", "Procurement"],
+  ["legal", "Legal"],
+  ["security reviewer", "Security Reviewer"],
+  ["other", "Other"]
+]);
+
+/* ---------------------------------
+   NORMALIZATION
+---------------------------------- */
+
+function cleanString(v) {
+  return String(v ?? "").trim();
+}
+
+function lower(v) {
+  return cleanString(v).toLowerCase();
+}
+
+function uniqueStrings(arr) {
+  return [...new Set((arr || []).filter(Boolean))];
+}
+
+function normalizeWithAliases(value, aliasMap, allowed, fallback = "Other") {
+  const raw = cleanString(value);
+  if (!raw) {
+    return {
+      value: fallback,
+      changed: false,
+      warning: `Missing value normalized to ${fallback}.`
+    };
+  }
+
+  if (allowed.includes(raw)) {
+    return { value: raw, changed: false, warning: null };
+  }
+
+  const aliasHit = aliasMap.get(lower(raw));
+  if (aliasHit && allowed.includes(aliasHit)) {
+    return {
+      value: aliasHit,
+      changed: aliasHit !== raw,
+      warning: aliasHit !== raw ? `Normalized "${raw}" to "${aliasHit}".` : null
+    };
+  }
+
+  return {
+    value: fallback,
+    changed: true,
+    warning: `Unrecognized value "${raw}" normalized to "${fallback}".`
+  };
+}
+
+export function normalizeVertical(value) {
+  return normalizeWithAliases(value, VERTICAL_ALIASES, STANDARD_VERTICALS, "Other");
+}
+
+export function normalizeRegion(value) {
+  return normalizeWithAliases(value, REGION_ALIASES, STANDARD_REGIONS, "Other");
+}
+
+export function normalizeSegment(value) {
+  return normalizeWithAliases(value, SEGMENT_ALIASES, STANDARD_SEGMENTS, "Other");
+}
+
+export function normalizeMotion(value) {
+  return normalizeWithAliases(value, MOTION_ALIASES, STANDARD_MOTIONS, "Other");
+}
+
+export function normalizeObjective(value) {
+  return normalizeWithAliases(value, OBJECTIVE_ALIASES, STANDARD_OBJECTIVES, "Other");
+}
+
+export function normalizeStage(value) {
+  return normalizeWithAliases(value, STAGE_ALIASES, STANDARD_STAGES, "No Opportunity");
+}
+
+export function normalizeRole(value, title = "") {
+  const roleAttempt = normalizeWithAliases(
+    value,
+    ROLE_ALIASES,
+    [
+      "Economic Buyer",
+      "Technical Buyer",
+      "Champion",
+      "Procurement",
+      "Legal",
+      "Security Reviewer",
+      "Other"
+    ],
+    "Other"
+  );
+
+  if (roleAttempt.value !== "Other" || !cleanString(title)) {
+    return roleAttempt;
+  }
+
+  const t = lower(title);
+
+  if (/(ceo|cfo|cro|coo|general manager|gm|president|evp|svp)/.test(t)) {
+    return {
+      value: "Economic Buyer",
+      changed: true,
+      warning: `Mapped title "${title}" to "Economic Buyer".`
+    };
+  }
+
+  if (
+    /(cio|cto|ciso|chief digital officer|vp it|vp engineering|architecture|platform|infrastructure|data)/.test(
+      t
+    )
+  ) {
+    return {
+      value: "Technical Buyer",
+      changed: true,
+      warning: `Mapped title "${title}" to "Technical Buyer".`
+    };
+  }
+
+  if (
+    /(revops|marketing ops|sales ops|operations|program|director|vp digital|head of)/.test(
+      t
+    )
+  ) {
+    return {
+      value: "Champion",
+      changed: true,
+      warning: `Mapped title "${title}" to "Champion".`
+    };
+  }
+
+  return roleAttempt;
+}
+
+function normalizeChannels(channels) {
+  return uniqueStrings((channels || []).map((c) => cleanString(c)).filter(Boolean));
+}
+
+function normalizeTargetRoles(roles) {
+  const warnings = [];
+  const normalized = uniqueStrings(
+    (roles || []).map((r) => {
+      const n = normalizeRole(r);
+      if (n.warning) warnings.push(n.warning);
+      return n.value;
+    })
+  ).filter((r) => r !== "Other");
+
+  return {
+    roles: normalized.length
+      ? normalized
+      : ["Economic Buyer", "Technical Buyer", "Champion"],
+    warnings
+  };
+}
+
+/* ---------------------------------
    HELPERS
------------------------------- */
+---------------------------------- */
 
 function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
+  const num = Number(n);
+  if (!Number.isFinite(num)) return min;
+  return Math.max(min, Math.min(max, num));
 }
 
-function avg(nums) {
-  if (!nums.length) return 0;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
+function toOptionalNumber(v) {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
+function toRequiredNumber(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function unique(arr) {
-  return [...new Set(arr)];
+function toBoolean(v) {
+  if (typeof v === "boolean") return v;
+  const s = lower(v);
+  return s === "true" || s === "yes" || s === "1";
 }
 
-const employeeBandOrder = ["1-50", "51-200", "201-1000", "1001-5000", "5000+"];
-const maturityOrder = ["Low", "Moderate", "High", "Very High"];
+/* ---------------------------------
+   ZOD HELPERS
+---------------------------------- */
 
-function compareOrdered(actual, minimum, order) {
-  if (!actual || !minimum) return false;
-  return order.indexOf(actual) >= order.indexOf(minimum);
-}
+const nonEmptyString = z
+  .string()
+  .transform((v) => cleanString(v))
+  .pipe(z.string().min(1));
 
-/* -----------------------------
-   PROGRAM SETUP SCHEMA
------------------------------- */
-
-export const programSetupSchema = z.object({
-  clientName: z.string().min(2),
-  objective: z.enum(["Net New", "Expansion", "Cross-Sell", "Retention", "Partner-Led"]),
-  productLine: z.string().min(2),
-  defaultTargetRoles: z.array(z.enum(BUYING_ROLES)).min(1),
-  defaultICP: z.object({
-    preferredVerticals: z.array(z.enum(VERTICALS)).optional().default([]),
-    preferredRegions: z.array(z.enum(REGIONS)).optional().default([]),
-    preferredSegments: z.array(z.enum(ACCOUNT_SEGMENTS)).optional().default([]),
-    preferredMotions: z.array(z.enum(GTM_MOTIONS)).optional().default([]),
-    minEmployeeBand: z.enum(["1-50", "51-200", "201-1000", "1001-5000", "5000+"]).optional(),
-    minSecurityMaturity: z.enum(["Low", "Moderate", "High", "Very High"]).optional(),
-    requiredTech: z.array(z.string()).optional().default([]),
-    excludedVerticals: z.array(z.enum(VERTICALS)).optional().default([]),
-    excludedRegions: z.array(z.enum(REGIONS)).optional().default([]),
-    excludedSignals: z.array(z.string()).optional().default([])
-  }).optional().default({}),
-  sellerContext: z.object({
-    ownerName: z.string().optional().default(""),
-    ownerRole: z.string().optional().default(""),
-    motionOwner: z.enum(["AE", "SDR", "Founder", "Partner", "CSM", "Marketing"]).optional().default("Marketing"),
-    channelsAvailable: z.array(z.enum(["Email", "LinkedIn", "Paid", "Events", "Partner", "Phone"])).optional().default([]),
-    promotionTriggerDefinition: z.string().optional().default("")
-  }).optional().default({}),
-  enrichmentAllowed: z.boolean().optional().default(true)
+const optionalString = z.any().optional().transform((v) => {
+  const s = cleanString(v);
+  return s || undefined;
 });
 
-/* -----------------------------
+const optionalNumber = z.any().optional().transform((v) => toOptionalNumber(v));
+
+const number0to100 = z.any().transform((v) => toRequiredNumber(v)).pipe(z.number().min(0).max(100));
+const number0to3650 = z.any().transform((v) => toRequiredNumber(v)).pipe(z.number().min(0).max(3650));
+
+/* ---------------------------------
    SCHEMAS
------------------------------- */
+---------------------------------- */
 
-const committeeMemberSchema = z.object({
-  name: z.string().min(1),
-  title: z.string().min(1),
-  role: z.enum(BUYING_ROLES),
-  seniority: z.enum(["C-Level", "VP", "Director", "Manager", "IC"]).optional().default("Director"),
-  influenceScore: z.number().min(0).max(100).optional().default(50),
-  relationshipStrength: z.number().min(0).max(100).optional().default(0),
-  engaged: z.boolean().optional().default(false)
+export const signalSchema = z.object({
+  signalType: nonEmptyString,
+  strength: number0to100,
+  recencyDays: number0to3650
 });
 
-const signalSchema = z.object({
-  signalType: z.enum([
-    "Bombora Surge",
-    "G2 Research",
-    "Website Engagement",
-    "Demo Request",
-    "Pricing Page Visit",
-    "Competitor Comparison",
-    "Job Hiring Spike",
-    "Funding Event",
-    "Expansion Event",
-    "Exec Change",
-    "Partner Motion",
-    "Product Usage",
-    "Outbound Reply"
-  ]),
-  strength: z.number().min(0).max(100),
-  recencyDays: z.number().int().min(0).max(365).optional().default(30),
-  source: z.string().min(1).optional().default("manual")
+export const committeeMemberSchema = z.object({
+  name: nonEmptyString,
+  title: optionalString,
+  role: optionalString,
+  relationshipStrength: optionalNumber,
+  engaged: z.any().optional().transform((v) => toBoolean(v))
 });
 
-const techSchema = z.object({
-  crm: z.enum(["Salesforce", "HubSpot", "Dynamics", "None", "Unknown"]).optional().default("Unknown"),
-  map: z.enum(["Marketo", "HubSpot", "Pardot", "Braze", "None", "Unknown"]).optional().default("Unknown"),
-  dataWarehouse: z.enum(["Snowflake", "BigQuery", "Redshift", "Databricks", "None", "Unknown"]).optional().default("Unknown"),
-  cloud: z.enum(["AWS", "Azure", "GCP", "Hybrid", "Unknown"]).optional().default("Unknown"),
-  securityMaturity: z.enum(["Low", "Moderate", "High", "Very High"]).optional().default("Moderate"),
-  stackFitScore: z.number().min(0).max(100).optional().default(50)
-}).optional().default({});
+export const techSchema = z
+  .object({
+    crm: optionalString,
+    map: optionalString,
+    dataWarehouse: optionalString,
+    cloud: optionalString,
+    securityMaturity: optionalString,
+    stackFitScore: optionalNumber
+  })
+  .default({});
 
 export const accountSchema = z.object({
-  accountName: z.string().min(2),
-  vertical: z.enum(VERTICALS),
-  region: z.enum(REGIONS),
-  segment: z.enum(ACCOUNT_SEGMENTS),
-
-  gtmMotion: z.enum(GTM_MOTIONS).optional().default("Sales-Led"),
-  domain: z.string().min(2).optional().default("unknown"),
-  employeeBand: z.enum(["1-50", "51-200", "201-1000", "1001-5000", "5000+"]).optional(),
-  revenueBand: z.enum(["<10M", "10-50M", "50-250M", "250M-1B", "1B+"]).optional(),
-  accountCoverageModel: z.enum(["Named", "Pooled", "Overlay", "Partner"]).optional().default("Named"),
-  existingCustomer: z.boolean().optional().default(false),
-  expansionCandidate: z.boolean().optional().default(false),
-  openOpportunity: z.boolean().optional().default(false),
-  strategicNamed: z.boolean().optional().default(false),
-  competitorPresent: z.boolean().optional().default(false),
-  partnerAvailable: z.boolean().optional().default(false),
-
-  committee: z.array(committeeMemberSchema).optional().default([]),
+  accountName: nonEmptyString,
+  domain: optionalString,
+  vertical: optionalString,
+  region: optionalString,
+  segment: optionalString,
+  gtmMotion: optionalString,
+  employeeBand: optionalString,
+  openOpportunity: z.any().optional().transform((v) => toBoolean(v)),
+  currentPipelineStage: optionalString,
+  firstPartyEngagementScore: optionalNumber,
+  thirdPartyIntentScore: optionalNumber,
+  relationshipScore: optionalNumber,
   signals: z.array(signalSchema).optional().default([]),
-  tech: techSchema,
+  committee: z.array(committeeMemberSchema).optional().default([]),
+  tech: techSchema.optional().default({})
+});
 
-  firstPartyEngagementScore: z.number().min(0).max(100).optional(),
-  thirdPartyIntentScore: z.number().min(0).max(100).optional(),
-  relationshipScore: z.number().min(0).max(100).optional(),
+export const defaultIcpSchema = z.object({
+  preferredVerticals: z.array(nonEmptyString).min(1),
+  preferredRegions: z.array(nonEmptyString).min(1),
+  preferredSegments: z.array(nonEmptyString).min(1),
+  preferredMotions: z.array(nonEmptyString).min(1),
+  requiredTech: z.array(nonEmptyString).optional().default([]),
+  excludedVerticals: z.array(nonEmptyString).optional().default([]),
+  excludedRegions: z.array(nonEmptyString).optional().default([]),
+  excludedSignals: z.array(nonEmptyString).optional().default([])
+});
 
-  currentPipelineStage: z.enum([
-    "No Opportunity",
-    "Targeting",
-    "Engaged",
-    "Meeting",
-    "Discovery",
-    "Evaluation",
-    "Procurement",
-    "Negotiation",
-    "Customer"
-  ]).optional().default("No Opportunity"),
+export const sellerContextSchema = z.object({
+  ownerName: nonEmptyString,
+  ownerRole: optionalString,
+  motionOwner: optionalString,
+  channelsAvailable: z.array(nonEmptyString).optional().default([]),
+  promotionTriggerDefinition: optionalString
+});
 
-  dealPotentialBand: z.enum(["Low", "Medium", "High", "Strategic"]).optional().default("Medium"),
-  notes: z.string().optional().default("")
+export const programSetupSchema = z.object({
+  clientName: nonEmptyString,
+  objective: nonEmptyString,
+  productLine: nonEmptyString,
+  defaultTargetRoles: z.array(nonEmptyString).min(1),
+  defaultICP: defaultIcpSchema,
+  sellerContext: sellerContextSchema,
+  enrichmentAllowed: z
+    .any()
+    .optional()
+    .transform((v) => toBoolean(v))
+    .default(false)
 });
 
 export const abmProjectSchema = z.object({
-  clientName: z.string().min(2),
-  objective: z.enum(["Net New", "Expansion", "Cross-Sell", "Retention", "Partner-Led"]),
-  productLine: z.string().min(2),
-  targetRoles: z.array(z.enum(BUYING_ROLES)).min(1),
-  account: accountSchema,
-  icp: z.object({
-    preferredVerticals: z.array(z.enum(VERTICALS)).optional().default([]),
-    preferredRegions: z.array(z.enum(REGIONS)).optional().default([]),
-    preferredSegments: z.array(z.enum(ACCOUNT_SEGMENTS)).optional().default([]),
-    preferredMotions: z.array(z.enum(GTM_MOTIONS)).optional().default([]),
-    minEmployeeBand: z.enum(["1-50", "51-200", "201-1000", "1001-5000", "5000+"]).optional(),
-    minSecurityMaturity: z.enum(["Low", "Moderate", "High", "Very High"]).optional(),
-    requiredTech: z.array(z.string()).optional().default([]),
-    excludedVerticals: z.array(z.enum(VERTICALS)).optional().default([]),
-    excludedRegions: z.array(z.enum(REGIONS)).optional().default([]),
-    excludedSignals: z.array(z.string()).optional().default([])
-  }).optional().default({}),
-  sellerContext: programSetupSchema.shape.sellerContext.optional().default({}),
-  programDefaults: z.object({
-    enrichmentAllowed: z.boolean().optional().default(true)
-  }).optional().default({})
+  clientName: nonEmptyString,
+  objective: nonEmptyString,
+  productLine: nonEmptyString,
+  targetRoles: z.array(nonEmptyString).min(1),
+  icp: defaultIcpSchema,
+  sellerContext: sellerContextSchema,
+  programDefaults: z
+    .object({
+      enrichmentAllowed: z.boolean().optional().default(false)
+    })
+    .optional()
+    .default({ enrichmentAllowed: false }),
+  account: accountSchema
 });
 
 export const portfolioSchema = z.object({
-  accounts: z.array(abmProjectSchema).min(1).max(100),
-  topN: z.number().int().min(1).max(50).optional().default(10)
+  accounts: z.array(z.any()).min(1),
+  topN: optionalNumber.default(10)
 });
 
-/* -----------------------------
-   VALIDATION
------------------------------- */
+/* ---------------------------------
+   ERROR MAPPING
+---------------------------------- */
 
-export function validationErrorsToFieldMap(error) {
+export function validationErrorsToFieldMap(zodError) {
   const out = {};
-  for (const issue of error.issues) {
-    const key = issue.path.length ? issue.path.join(".") : "form";
-    if (!out[key]) out[key] = [];
-    out[key].push(issue.message);
+  for (const issue of zodError.issues ?? []) {
+    const key = (issue.path?.join(".") ?? "form").toString();
+    out[key] = out[key] ? [...out[key], issue.message] : [issue.message];
   }
   return out;
 }
 
-/* -----------------------------
-   CONFIDENCE + DATA PRESENCE
------------------------------- */
+/* ---------------------------------
+   PROGRAM NORMALIZATION
+---------------------------------- */
 
-function buildConfidence(project) {
-  const account = project.account;
-  const hasFitCore =
-    Boolean(account.vertical) &&
-    Boolean(account.region) &&
-    Boolean(account.segment) &&
-    Boolean(project.targetRoles?.length);
+function normalizeIcp(icp) {
+  const warnings = [];
 
-  const hasEmployee = Boolean(account.employeeBand);
-  const hasTech = Boolean(account.tech && (
-    account.tech.stackFitScore !== undefined ||
-    account.tech.crm !== "Unknown" ||
-    account.tech.map !== "Unknown" ||
-    account.tech.cloud !== "Unknown"
-  ));
-
-  const hasSignals = safeArray(account.signals).length > 0;
-  const hasFirstParty = typeof account.firstPartyEngagementScore === "number";
-  const hasThirdParty = typeof account.thirdPartyIntentScore === "number";
-  const hasCommittee = safeArray(account.committee).length > 0;
-  const hasRelationship = typeof account.relationshipScore === "number";
-
-  const fitConfidence = clamp(
-    (hasFitCore ? 55 : 0) +
-      (hasEmployee ? 15 : 0) +
-      (hasTech ? 20 : 0) +
-      (project.icp?.preferredVerticals?.length ? 10 : 0),
-    0,
-    100
+  const preferredVerticals = uniqueStrings(
+    (icp.preferredVerticals || []).map((v) => {
+      const n = normalizeVertical(v);
+      if (n.warning) warnings.push(`ICP vertical: ${n.warning}`);
+      return n.value;
+    })
   );
 
-  const intentConfidence = clamp(
-    (hasSignals ? 45 : 0) +
-      (hasFirstParty ? 25 : 0) +
-      (hasThirdParty ? 25 : 0) +
-      (account.openOpportunity ? 5 : 0),
-    0,
-    100
+  const preferredRegions = uniqueStrings(
+    (icp.preferredRegions || []).map((v) => {
+      const n = normalizeRegion(v);
+      if (n.warning) warnings.push(`ICP region: ${n.warning}`);
+      return n.value;
+    })
   );
 
-  const committeeConfidence = clamp(
-    (hasCommittee ? 70 : 0) +
-      (hasRelationship ? 20 : 0) +
-      (safeArray(account.committee).some((m) => m.engaged) ? 10 : 0),
-    0,
-    100
+  const preferredSegments = uniqueStrings(
+    (icp.preferredSegments || []).map((v) => {
+      const n = normalizeSegment(v);
+      if (n.warning) warnings.push(`ICP segment: ${n.warning}`);
+      return n.value;
+    })
   );
 
-  const overallConfidence = Math.round(
-    fitConfidence * 0.45 + intentConfidence * 0.30 + committeeConfidence * 0.25
+  const preferredMotions = uniqueStrings(
+    (icp.preferredMotions || []).map((v) => {
+      const n = normalizeMotion(v);
+      if (n.warning) warnings.push(`ICP motion: ${n.warning}`);
+      return n.value;
+    })
   );
 
-  const missingDataWarnings = [];
-
-  if (!hasSignals && !hasFirstParty && !hasThirdParty) {
-    missingDataWarnings.push(
-      "No intent or engagement data provided. Recommendations are fit-led, not demand-led."
-    );
-  }
-
-  if (!hasCommittee) {
-    missingDataWarnings.push(
-      "No buying committee data provided. Committee coverage is inferred from target roles and marked low-confidence."
-    );
-  }
-
-  if (!hasEmployee) {
-    missingDataWarnings.push(
-      "Employee band missing. Firmographic fit is partially inferred."
-    );
-  }
-
-  if (!hasTech) {
-    missingDataWarnings.push(
-      "Technographic data missing. Stack-fit scoring is conservative."
-    );
-  }
+  const excludedVerticals = uniqueStrings(
+    (icp.excludedVerticals || []).map((v) => normalizeVertical(v).value)
+  );
+  const excludedRegions = uniqueStrings(
+    (icp.excludedRegions || []).map((v) => normalizeRegion(v).value)
+  );
+  const excludedSignals = uniqueStrings(
+    (icp.excludedSignals || []).map((v) => cleanString(v))
+  );
 
   return {
-    fitConfidence,
-    intentConfidence,
-    committeeConfidence,
-    overallConfidence,
-    missingDataWarnings
+    normalized: {
+      preferredVerticals: preferredVerticals.length ? preferredVerticals : ["Other"],
+      preferredRegions: preferredRegions.length ? preferredRegions : ["Other"],
+      preferredSegments: preferredSegments.length ? preferredSegments : ["Other"],
+      preferredMotions: preferredMotions.length ? preferredMotions : ["Other"],
+      requiredTech: uniqueStrings((icp.requiredTech || []).map((v) => cleanString(v))),
+      excludedVerticals,
+      excludedRegions,
+      excludedSignals
+    },
+    warnings
   };
 }
 
-/* -----------------------------
+export function normalizeProgramSetup(input) {
+  const parsed = programSetupSchema.parse(input);
+
+  const objective = normalizeObjective(parsed.objective);
+  const targetRoles = normalizeTargetRoles(parsed.defaultTargetRoles);
+  const icp = normalizeIcp(parsed.defaultICP);
+
+  const warnings = [
+    ...(objective.warning ? [`Objective: ${objective.warning}`] : []),
+    ...targetRoles.warnings,
+    ...icp.warnings
+  ];
+
+  return {
+    clientName: parsed.clientName,
+    objective: objective.value,
+    productLine: parsed.productLine,
+    defaultTargetRoles: targetRoles.roles,
+    defaultICP: icp.normalized,
+    sellerContext: {
+      ownerName: parsed.sellerContext.ownerName,
+      ownerRole: parsed.sellerContext.ownerRole || null,
+      motionOwner: parsed.sellerContext.motionOwner || null,
+      channelsAvailable: normalizeChannels(parsed.sellerContext.channelsAvailable),
+      promotionTriggerDefinition:
+        parsed.sellerContext.promotionTriggerDefinition ||
+        "Promote when fit, demand, and committee evidence justify higher investment."
+    },
+    enrichmentAllowed: Boolean(parsed.enrichmentAllowed),
+    normalizationWarnings: uniqueStrings(warnings)
+  };
+}
+
+/* ---------------------------------
+   ACCOUNT NORMALIZATION
+---------------------------------- */
+
+export function normalizeAccount(account) {
+  const warnings = [];
+
+  const vertical = normalizeVertical(account.vertical);
+  const region = normalizeRegion(account.region);
+  const segment = normalizeSegment(account.segment);
+  const gtmMotion = normalizeMotion(account.gtmMotion);
+  const stage = normalizeStage(account.currentPipelineStage);
+
+  if (vertical.warning) warnings.push(`Account vertical: ${vertical.warning}`);
+  if (region.warning) warnings.push(`Account region: ${region.warning}`);
+  if (segment.warning) warnings.push(`Account segment: ${segment.warning}`);
+  if (gtmMotion.warning) warnings.push(`Account motion: ${gtmMotion.warning}`);
+  if (stage.warning) warnings.push(`Account stage: ${stage.warning}`);
+
+  const employeeBandRaw = cleanString(account.employeeBand || "Unknown");
+  const employeeBand = STANDARD_EMPLOYEE_BANDS.includes(employeeBandRaw)
+    ? employeeBandRaw
+    : "Unknown";
+  if (employeeBandRaw && employeeBandRaw !== employeeBand) {
+    warnings.push(`Employee band "${employeeBandRaw}" normalized to "Unknown".`);
+  }
+
+  const committee = (account.committee || []).map((m) => {
+    const role = normalizeRole(m.role, m.title);
+    if (role.warning) warnings.push(`Committee role: ${role.warning}`);
+    return {
+      name: m.name,
+      title: m.title || null,
+      role: role.value,
+      relationshipStrength: clamp(m.relationshipStrength ?? 0, 0, 100),
+      engaged: Boolean(m.engaged)
+    };
+  });
+
+  const signals = (account.signals || [])
+    .map((s) => ({
+      signalType: cleanString(s.signalType),
+      strength: clamp(s.strength ?? 0, 0, 100),
+      recencyDays: clamp(s.recencyDays ?? 3650, 0, 3650)
+    }))
+    .filter((s) => s.signalType);
+
+  return {
+    normalized: {
+      accountName: account.accountName,
+      domain: account.domain || null,
+      vertical: vertical.value,
+      region: region.value,
+      segment: segment.value,
+      gtmMotion: gtmMotion.value,
+      employeeBand,
+      openOpportunity: Boolean(account.openOpportunity),
+      currentPipelineStage: stage.value,
+      firstPartyEngagementScore: clamp(account.firstPartyEngagementScore ?? 0, 0, 100),
+      thirdPartyIntentScore: clamp(account.thirdPartyIntentScore ?? 0, 0, 100),
+      relationshipScore: clamp(account.relationshipScore ?? 0, 0, 100),
+      signals,
+      committee,
+      tech: {
+        crm: account.tech?.crm || null,
+        map: account.tech?.map || null,
+        dataWarehouse: account.tech?.dataWarehouse || null,
+        cloud: account.tech?.cloud || null,
+        securityMaturity: account.tech?.securityMaturity || null,
+        stackFitScore: clamp(account.tech?.stackFitScore ?? 0, 0, 100)
+      }
+    },
+    warnings: uniqueStrings(warnings)
+  };
+}
+
+/* ---------------------------------
    SCORING
------------------------------- */
+---------------------------------- */
 
-function scoreFit(project) {
-  const { account } = project;
-  const icp = project.icp || {};
+function hasRecentBottomFunnelSignal(signals) {
+  return (signals || []).some((s) => {
+    const t = lower(s.signalType);
+    return (
+      s.recencyDays <= 14 &&
+      (t.includes("demo") ||
+        t.includes("pricing") ||
+        t.includes("reply") ||
+        t.includes("meeting") ||
+        t.includes("trial"))
+    );
+  });
+}
 
-  let score = 0;
+function stageWeight(stage) {
+  switch (stage) {
+    case "Decision":
+      return 95;
+    case "Negotiation":
+      return 90;
+    case "Proposal":
+      return 82;
+    case "Evaluation":
+      return 75;
+    case "Meeting":
+      return 68;
+    case "Discovery":
+      return 62;
+    case "Engaged":
+      return 50;
+    case "Awareness":
+      return 38;
+    case "Target":
+    case "Targeting":
+      return 25;
+    case "Closed Won":
+      return 100;
+    case "Closed Lost":
+      return 5;
+    case "No Opportunity":
+    default:
+      return 12;
+  }
+}
+
+function confidenceFromMissingness(
+  missingDataWarnings,
+  normalizationWarnings,
+  exploriumDiagnostics
+) {
+  let score = 100;
+  score -= (missingDataWarnings?.length || 0) * 7;
+  score -= (normalizationWarnings?.length || 0) * 3;
+
+  if (exploriumDiagnostics?.attempted && !exploriumDiagnostics?.matched) {
+    score -= 4;
+  }
+
+  return clamp(score, 30, 99);
+}
+
+function fitScore(project, normalizedAccount) {
   const reasons = [];
   const risks = [];
+  let score = 0;
 
-  if (!icp.preferredVerticals?.length || icp.preferredVerticals.includes(account.vertical)) {
+  if (project.icp.preferredVerticals.includes(normalizedAccount.vertical)) {
     score += 18;
-    reasons.push(`Vertical fit: ${account.vertical}`);
-  } else {
-    risks.push(`Vertical outside preferred ICP: ${account.vertical}`);
-  }
-
-  if (!icp.preferredRegions?.length || icp.preferredRegions.includes(account.region)) {
-    score += 12;
-    reasons.push(`Regional fit: ${account.region}`);
-  } else {
-    risks.push(`Region outside preferred ICP: ${account.region}`);
-  }
-
-  if (!icp.preferredSegments?.length || icp.preferredSegments.includes(account.segment)) {
-    score += 10;
-    reasons.push(`Segment fit: ${account.segment}`);
-  } else {
-    risks.push(`Segment outside preferred ICP: ${account.segment}`);
-  }
-
-  if (!icp.preferredMotions?.length || icp.preferredMotions.includes(account.gtmMotion)) {
+    reasons.push(`Vertical fit: ${normalizedAccount.vertical}`);
+  } else if (normalizedAccount.vertical === "Other") {
     score += 6;
-    reasons.push(`GTM motion fit: ${account.gtmMotion}`);
+    risks.push("Vertical was unknown or normalized to Other.");
+  } else {
+    risks.push(`Vertical misfit: ${normalizedAccount.vertical}`);
   }
 
-  if (icp.minEmployeeBand && account.employeeBand) {
-    if (compareOrdered(account.employeeBand, icp.minEmployeeBand, employeeBandOrder)) {
-      score += 8;
-      reasons.push(`Employee band clears ICP floor: ${account.employeeBand}`);
-    } else {
-      risks.push(`Employee band below ICP floor: ${account.employeeBand}`);
-    }
+  if (project.icp.preferredRegions.includes(normalizedAccount.region)) {
+    score += 14;
+    reasons.push(`Regional fit: ${normalizedAccount.region}`);
+  } else if (normalizedAccount.region === "Other") {
+    score += 5;
+    risks.push("Region was unknown or normalized to Other.");
   } else {
+    risks.push(`Regional misfit: ${normalizedAccount.region}`);
+  }
+
+  if (project.icp.preferredSegments.includes(normalizedAccount.segment)) {
+    score += 14;
+    reasons.push(`Segment fit: ${normalizedAccount.segment}`);
+  } else if (normalizedAccount.segment === "Other") {
     score += 4;
-    reasons.push("Employee band unavailable; partial fit score applied");
+    risks.push("Segment was unknown or normalized to Other.");
+  } else {
+    risks.push(`Segment misfit: ${normalizedAccount.segment}`);
   }
 
-  if (icp.minSecurityMaturity && account.tech?.securityMaturity) {
-    if (compareOrdered(account.tech.securityMaturity, icp.minSecurityMaturity, maturityOrder)) {
-      score += 6;
-      reasons.push(`Security maturity acceptable: ${account.tech.securityMaturity}`);
-    } else {
-      risks.push(`Security maturity below preferred threshold: ${account.tech.securityMaturity}`);
-    }
-  } else {
+  if (project.icp.preferredMotions.includes(normalizedAccount.gtmMotion)) {
+    score += 10;
+    reasons.push(`GTM motion fit: ${normalizedAccount.gtmMotion}`);
+  } else if (normalizedAccount.gtmMotion === "Other") {
     score += 3;
-    reasons.push("Security maturity unavailable; conservative baseline applied");
+    risks.push("Motion was unknown or normalized to Other.");
+  } else {
+    risks.push(`Motion misfit: ${normalizedAccount.gtmMotion}`);
   }
 
-  const stackFit = typeof account.tech?.stackFitScore === "number" ? account.tech.stackFitScore : 50;
-  score += stackFit * 0.22;
-  reasons.push(`Technographic fit contributes ${Math.round(stackFit * 0.22)} points`);
-
-  if (account.strategicNamed) {
-    score += 8;
-    reasons.push("Strategic named account");
+  const techFit = clamp(((normalizedAccount.tech?.stackFitScore ?? 0) / 100) * 12, 0, 12);
+  score += techFit;
+  if (techFit > 0) {
+    reasons.push(`Technographic fit contributes ${Math.round(techFit)} points`);
   }
 
-  if (account.partnerAvailable) {
-    score += 4;
-    reasons.push("Partner leverage available");
-  }
-
-  if (icp.excludedVerticals?.includes(account.vertical)) {
-    score -= 25;
-    risks.push(`Negative ICP vertical: ${account.vertical}`);
-  }
-
-  if (icp.excludedRegions?.includes(account.region)) {
-    score -= 20;
-    risks.push(`Negative ICP region: ${account.region}`);
-  }
-
-  if (account.competitorPresent) {
-    score -= 5;
-    risks.push("Incumbent competitor present");
+  if (normalizedAccount.employeeBand === "Unknown") {
+    risks.push("Employee band missing. Firmographic fit is partially inferred.");
+  } else {
+    reasons.push(`Employee band available: ${normalizedAccount.employeeBand}`);
   }
 
   return {
@@ -438,417 +907,910 @@ function scoreFit(project) {
   };
 }
 
-function scoreIntent(account) {
-  const signals = safeArray(account.signals);
+function intentScore(normalizedAccount) {
+  const reasons = [];
+  const topSignals = [];
+  const signalPoints = (normalizedAccount.signals || []).reduce((sum, s) => {
+    const freshness = Math.max(0.25, 1 - s.recencyDays / 90);
+    const points = s.strength * freshness;
+    topSignals.push(`${s.signalType} (${s.strength}, ${s.recencyDays}d)`);
+    return sum + points;
+  }, 0);
 
-  const weightedSignals = signals.map((s) => {
-    const recencyFactor =
-      s.recencyDays <= 7 ? 1 :
-      s.recencyDays <= 30 ? 0.8 :
-      s.recencyDays <= 90 ? 0.55 :
-      0.3;
+  const blended =
+    normalizedAccount.firstPartyEngagementScore * 0.35 +
+    normalizedAccount.thirdPartyIntentScore * 0.45 +
+    Math.min(signalPoints, 100) * 0.2;
 
-    const sourceBoost =
-      s.signalType === "Demo Request" ? 1.25 :
-      s.signalType === "Pricing Page Visit" ? 1.15 :
-      s.signalType === "Competitor Comparison" ? 1.15 :
-      s.signalType === "Bombora Surge" ? 1.05 :
-      1;
-
-    return s.strength * recencyFactor * sourceBoost;
-  });
-
-  const signalScore = clamp(avg(weightedSignals), 0, 100);
-  const firstParty = typeof account.firstPartyEngagementScore === "number" ? account.firstPartyEngagementScore : null;
-  const thirdParty = typeof account.thirdPartyIntentScore === "number" ? account.thirdPartyIntentScore : null;
-
-  let combined;
-  if (signals.length || firstParty !== null || thirdParty !== null) {
-    combined = clamp(
-      Math.round(
-        signalScore * 0.40 +
-          (thirdParty ?? 0) * 0.35 +
-          (firstParty ?? 0) * 0.25
-      ),
-      0,
-      100
-    );
-  } else {
-    combined = 0;
+  if (normalizedAccount.firstPartyEngagementScore > 0) {
+    reasons.push(`First-party engagement: ${normalizedAccount.firstPartyEngagementScore}`);
   }
-
-  let stage = "Target";
-  let stageConfidence = "low";
-
-  if (combined >= 86) {
-    stage = "Purchase";
-    stageConfidence = "high";
-  } else if (combined >= 70) {
-    stage = "Decision";
-    stageConfidence = "high";
-  } else if (combined >= 50) {
-    stage = "Consideration";
-    stageConfidence = "medium";
-  } else if (combined >= 20) {
-    stage = "Awareness";
-    stageConfidence = "medium";
+  if (normalizedAccount.thirdPartyIntentScore > 0) {
+    reasons.push(`Third-party intent: ${normalizedAccount.thirdPartyIntentScore}`);
+  }
+  if (topSignals.length) {
+    reasons.push("Recent signals available");
   }
 
   return {
-    score: combined,
-    stage,
-    stageConfidence,
-    topSignals: signals
-      .slice()
-      .sort((a, b) => (b.strength - a.strength) || (a.recencyDays - b.recencyDays))
-      .slice(0, 5)
-      .map((s) => `${s.signalType} (${s.strength}, ${s.recencyDays}d)`),
-    inputCoverage: {
-      signalsProvided: signals.length,
-      firstPartyProvided: firstParty !== null,
-      thirdPartyProvided: thirdParty !== null
-    }
+    score: clamp(Math.round(blended), 0, 100),
+    reasons,
+    topSignals: topSignals.slice(0, 5)
   };
 }
 
-function scoreCommittee(project) {
-  const requiredRoles = unique(project.targetRoles || []);
-  const members = safeArray(project.account.committee);
-  const presentRoles = unique(members.map((m) => m.role));
+function committeeCoverage(project, normalizedAccount) {
+  const targetRoles = project.targetRoles || [];
+  const covered = new Set();
+  const warnings = [];
+  const members = normalizedAccount.committee || [];
 
-  const covered = requiredRoles.filter((r) => presentRoles.includes(r));
-  const missing = requiredRoles.filter((r) => !presentRoles.includes(r));
+  for (const member of members) {
+    if (targetRoles.includes(member.role)) {
+      covered.add(member.role);
+    }
+  }
+
+  const roleCoveragePoints = targetRoles.length ? (covered.size / targetRoles.length) * 70 : 0;
+
+  const relationshipBonus = members.length
+    ? Math.min(
+        30,
+        members.reduce(
+          (sum, m) => sum + (m.engaged ? 10 : 0) + ((m.relationshipStrength || 0) / 10),
+          0
+        )
+      )
+    : 0;
 
   if (!members.length) {
-    return {
-      score: 20,
-      coveredRoles: [],
-      missingRoles: missing,
-      relationshipAvg: 0,
-      engagedCount: 0,
-      inferred: true
-    };
+    warnings.push(
+      "No buying committee data provided. Committee coverage is inferred from target roles and marked low-confidence."
+    );
   }
 
-  const relationshipAvg = avg(members.map((m) => m.relationshipStrength || 0));
-  const engagedCount = members.filter((m) => m.engaged).length;
-
-  let score = 0;
-  score += (requiredRoles.length ? covered.length / requiredRoles.length : 0) * 60;
-  score += relationshipAvg * 0.25;
-  score += Math.min(15, engagedCount * 3);
+  const missingRoles = targetRoles.filter((r) => !covered.has(r));
 
   return {
-    score: clamp(Math.round(score), 0, 100),
-    coveredRoles: covered,
-    missingRoles: missing,
-    relationshipAvg: Math.round(relationshipAvg),
-    engagedCount,
-    inferred: false
+    score: clamp(Math.round(roleCoveragePoints + relationshipBonus), 0, 100),
+    coveredRoles: [...covered],
+    missingRoles,
+    warnings
   };
 }
 
-function scoreRelationship(account) {
-  const direct = typeof account.relationshipScore === "number" ? account.relationshipScore : null;
-  const committeeRelationship = avg(safeArray(account.committee).map((m) => m.relationshipStrength || 0));
+function relationshipComponent(normalizedAccount) {
+  const averageCommitteeStrength =
+    (normalizedAccount.committee || []).reduce(
+      (sum, m) => sum + (m.relationshipStrength || 0),
+      0
+    ) / Math.max(1, normalizedAccount.committee.length);
 
-  if (direct === null && !safeArray(account.committee).length) {
-    return {
-      score: 15,
-      inferred: true
-    };
-  }
+  const score = clamp(
+    Math.round(
+      normalizedAccount.relationshipScore * 0.65 + averageCommitteeStrength * 0.35
+    ),
+    0,
+    100
+  );
 
-  let score = (direct ?? committeeRelationship) * 0.6 + committeeRelationship * 0.4;
-
-  if (account.existingCustomer && account.expansionCandidate) {
-    score += 10;
-  }
-
-  return {
-    score: clamp(Math.round(score), 0, 100),
-    inferred: direct === null
-  };
+  return { score };
 }
 
-function computePenalties(project, intent, committee) {
+function inferBuyingStage(normalizedAccount, intent, committee) {
+  const stageBase = stageWeight(normalizedAccount.currentPipelineStage);
+  const signalBonus = hasRecentBottomFunnelSignal(normalizedAccount.signals) ? 12 : 0;
+  const committeeBonus =
+    committee.coveredRoles.length >= 2 ? 8 : committee.coveredRoles.length >= 1 ? 4 : 0;
+  const oppBonus = normalizedAccount.openOpportunity ? 10 : 0;
+  const composite = clamp(
+    Math.round(stageBase * 0.5 + intent.score * 0.3 + signalBonus + committeeBonus + oppBonus),
+    0,
+    100
+  );
+
+  let buyingStage = "Target";
+  let stageConfidence = "low";
+
+  if (composite >= 80) {
+    buyingStage = "Decision";
+    stageConfidence = "high";
+  } else if (composite >= 65) {
+    buyingStage = "Consideration";
+    stageConfidence = "high";
+  } else if (composite >= 45) {
+    buyingStage = "Awareness";
+    stageConfidence = "medium";
+  }
+
+  return { buyingStage, stageConfidence, composite };
+}
+
+function computePenalties(project, normalizedAccount, fit, intent, committee) {
   const penalties = [];
-  let total = 0;
 
-  if (committee.missingRoles.includes("Economic Buyer")) {
-    total += 8;
-    penalties.push("Economic buyer not mapped");
+  if (fit.score < 40) penalties.push("Fit score below hard promotion floor.");
+  if (
+    !normalizedAccount.openOpportunity &&
+    normalizedAccount.currentPipelineStage === "No Opportunity"
+  ) {
+    penalties.push("No active opportunity.");
+  }
+  if (intent.score < 30) penalties.push("Weak or absent demand signal.");
+  if (!committee.coveredRoles.includes("Economic Buyer")) {
+    penalties.push("Economic buyer not mapped.");
+  }
+  if (!committee.coveredRoles.includes("Technical Buyer")) {
+    penalties.push("Technical buyer not mapped.");
+  }
+  if (!normalizedAccount.signals.length && normalizedAccount.thirdPartyIntentScore === 0) {
+    penalties.push("No intent instrumentation.");
+  }
+  if (project.icp.excludedVerticals?.includes(normalizedAccount.vertical)) {
+    penalties.push(`Vertical is explicitly excluded: ${normalizedAccount.vertical}`);
+  }
+  if (project.icp.excludedRegions?.includes(normalizedAccount.region)) {
+    penalties.push(`Region is explicitly excluded: ${normalizedAccount.region}`);
   }
 
-  if (committee.missingRoles.includes("Technical Buyer")) {
-    total += 6;
-    penalties.push("Technical buyer not mapped");
-  }
+  return penalties;
+}
 
-  if (project.account.competitorPresent) {
-    total += 5;
-    penalties.push("Incumbent competitor present");
-  }
+function tierAndAction(project, normalizedAccount, fit, intent, committee, relationship, penalties) {
+  const weighted =
+    fit.score * 0.4 +
+    intent.score * 0.3 +
+    committee.score * 0.2 +
+    relationship.score * 0.1;
 
-  if (project.account.currentPipelineStage === "No Opportunity" && intent.stage === "Target") {
-    total += 8;
-    penalties.push("No active opportunity and weak demand signal");
+  const hardNoPromote = fit.score < 40;
+
+  const tier2Eligible =
+    fit.score >= 55 &&
+    (
+      intent.score >= 55 ||
+      (normalizedAccount.openOpportunity &&
+        stageWeight(normalizedAccount.currentPipelineStage) >= stageWeight("Discovery")) ||
+      hasRecentBottomFunnelSignal(normalizedAccount.signals)
+    ) &&
+    (
+      committee.score >= 35 ||
+      committee.coveredRoles.length >= 1 ||
+      (normalizedAccount.committee || []).some((m) =>
+        /(vp|chief|cio|cto|cfo|cro|coo|ceo|evp|svp)/i.test(m.title || "")
+      )
+    );
+
+  let totalScore = clamp(Math.round(weighted - penalties.length * 3), 0, 100);
+  let tier = "Tier 3";
+  let ownerAction = "Keep in monitored nurture";
+  let minimumNextStep = "Add to monitored nurture";
+
+  if (!hardNoPromote && tier2Eligible) {
+    tier = "Tier 2";
+    ownerAction = "Run tailored 1:few motion";
+    minimumNextStep = "Run tailored outbound + paid sequence";
+    totalScore = Math.max(totalScore, 55);
   }
 
   if (
-    typeof project.account.firstPartyEngagementScore !== "number" &&
-    typeof project.account.thirdPartyIntentScore !== "number" &&
-    !safeArray(project.account.signals).length
+    !hardNoPromote &&
+    fit.score >= 70 &&
+    intent.score >= 75 &&
+    committee.coveredRoles.length >= 2 &&
+    normalizedAccount.openOpportunity
   ) {
-    total += 4;
-    penalties.push("No intent instrumentation provided");
+    tier = "Tier 1";
+    ownerAction = "Run bespoke 1:1 ABM motion";
+    minimumNextStep = "Coordinate exec outreach + multithreaded account plan";
+    totalScore = Math.max(totalScore, 75);
   }
 
-  return { total, penalties };
-}
-
-function decideTier(totalScore, project, intent) {
-  if (project.account.strategicNamed && totalScore >= 72) return "Tier 1";
-  if (totalScore >= 75 || intent.stage === "Purchase") return "Tier 1";
-  if (totalScore >= 58 || intent.stage === "Decision") return "Tier 2";
-  return "Tier 3";
-}
-
-function buildRegionalOverlay(region) {
-  const map = {
-    "North America": ["Use ROI-led narrative", "Push urgency with commercial proof"],
-    "UKI": ["Emphasize compliance and business-case rigor", "Use lower-hype language"],
-    "DACH": ["Lead with architecture, precision, and risk control", "Avoid fluffy claims"],
-    "Nordics": ["Use efficient, understated messaging", "Show product credibility"],
-    "Southern Europe": ["Use local proof and practical outcomes", "Partner trust can help"],
-    "India": ["Balance value, speed, and executive relevance", "Consensus selling matters"],
-    "SEA": ["Local maturity varies by market", "Partner and localization leverage matter"],
-    "ANZ": ["Tie to operational outcomes", "Show practical transformation gains"],
-    "Middle East": ["Trust and executive sponsorship matter", "Use regional proof if available"],
-    "LATAM": ["Simplify activation path", "Use partner-assisted execution when possible"],
-    "Global": ["Use global narrative with regional adaptation", "Avoid one-size-fits-all execution"]
+  return {
+    totalScore: clamp(totalScore, 0, 100),
+    tier,
+    ownerAction,
+    minimumNextStep
   };
-  return map[region] || ["Use account-specific regional context"];
 }
 
-function buildVerticalOverlay(vertical) {
-  const map = {
-    "Cybersecurity": ["Lead with risk reduction and posture", "Technical buyer enablement is mandatory"],
-    "Fintech": ["Stress compliance, resilience, and speed-to-value", "Expect procurement scrutiny"],
-    "Healthcare": ["Navigate data sensitivity and operational risk", "Compliance coalition matters"],
-    "Pharma": ["Long-cycle stakeholder mapping required", "Procurement/compliance complexity is high"],
-    "Logistics": ["Tie value to throughput, SLA, and margin protection", "Operations stakeholder matters"],
-    "TravelTech": ["Anchor to demand volatility and yield", "Timing matters"],
-    "HRtech": ["Show adoption and workflow simplicity", "Champion role often drives momentum"],
-    "Retail": ["Emphasize margin and customer experience", "Planning-cycle timing matters"],
-    "Manufacturing": ["Lead with reliability and efficiency", "Technical confidence is critical"],
-    "Telecom": ["Expect matrixed buying groups", "Executive sponsor plus technical validation matters"],
-    "Media": ["Prove monetization and workflow efficiency", "Narrative testing helps"],
-    "Public Sector": ["Procurement and compliance dominate timing", "Stakeholder mapping must be explicit"],
-    "Other": ["Use tailored account-specific business case"]
-  };
-  return map[vertical] || ["Use tailored account-specific business case"];
+function messageHypothesis(project, normalizedAccount, fit, intent) {
+  const vertical = normalizedAccount.vertical || "target vertical";
+  const product = project.productLine || "your solution";
+
+  if (fit.score >= 60 && intent.score >= 55) {
+    return `Lead with a ${vertical}-specific commercial case for ${product}, tied to measurable revenue or operating lift and backed by role-relevant proof.`;
+  }
+
+  if (fit.score >= 55) {
+    return `Lead with strategic relevance for ${vertical}, but keep the ask light until stronger demand or stakeholder access appears.`;
+  }
+
+  return `Keep messaging broad and educational; do not overpersonalize until fit or demand improves.`;
 }
 
-function buildPlays(project, totalScore, intent, committee, tier, confidence) {
+function recommendedPlays(project, normalizedAccount, fit, intent, committee, tier) {
   const plays = [];
 
   if (tier === "Tier 1") {
-    plays.push("Run 1:1 account plan with seller + marketing co-ownership");
-    plays.push("Deploy bespoke POV tied to account priorities");
+    plays.push("Run 1:1 account plan with multithreaded outreach.");
+    plays.push("Build executive air cover and stakeholder map.");
+    plays.push("Use ROI, migration, and proof assets tailored to the account.");
   } else if (tier === "Tier 2") {
-    plays.push("Run 1:few vertical/region play with tailored proof");
-    plays.push("Coordinate SDR + paid + content sequence");
+    plays.push("Run 1:few vertical/region play with tailored proof.");
+    plays.push("Coordinate SDR + paid + content sequence.");
+    plays.push(`Map missing roles: ${committee.missingRoles.join(", ") || "None"}.`);
   } else {
-    plays.push("Run 1:many nurture with lightweight monitoring");
-    plays.push("Promote only if fit or signals improve");
+    plays.push("Run 1:many nurture with lightweight monitoring.");
+    plays.push("Promote only if fit or signals improve.");
+    plays.push("Use awareness and insight-led air cover.");
+    if (committee.missingRoles.length) {
+      plays.push(`Map missing roles: ${committee.missingRoles.join(", ")}.`);
+    }
   }
 
-  if (intent.stage === "Purchase") {
-    plays.push("Immediate sales activation within 24 hours");
-    plays.push("Deliver procurement-ready ROI and migration pack");
-  } else if (intent.stage === "Decision") {
-    plays.push("Use comparison, ROI, and technical validation assets");
-  } else if (intent.stage === "Consideration") {
-    plays.push("Use buyer-guide and proof-led education");
-  } else {
-    plays.push("Use awareness and insight-led air cover");
+  if (hasRecentBottomFunnelSignal(normalizedAccount.signals)) {
+    plays.push("Follow up quickly on recent bottom-funnel behavior.");
   }
 
-  if (committee.missingRoles.length) {
-    plays.push(`Map missing roles: ${committee.missingRoles.join(", ")}`);
-  }
-
-  if (project.account.partnerAvailable) {
-    plays.push("Activate partner-assisted credibility motion");
-  }
-
-  if (project.account.competitorPresent) {
-    plays.push("Prepare displacement narrative and competitive proof");
-  }
-
-  if (project.objective === "Expansion" || project.account.expansionCandidate) {
-    plays.push("Map whitespace use cases and expansion path");
-  }
-
-  if (confidence.intentConfidence < 30) {
-    plays.push("Prioritize instrumentation: web engagement, CRM activity, or third-party intent");
-  }
-
-  if (confidence.committeeConfidence < 35) {
-    plays.push("Do stakeholder mapping before heavy spend");
-  }
-
-  if (totalScore < 45) {
-    plays.push("Do not overinvest; keep coverage light until fit or demand improves");
-  }
-
-  return plays;
+  return uniqueStrings(plays);
 }
 
-function buildSummary(project, totalScore, tier, intent, confidence) {
-  if (totalScore >= 75) {
-    return `${project.clientName} is a strong ${tier} ABM account with credible fit and ${intent.stage.toLowerCase()}-stage buying activity. Overall confidence: ${confidence.overallConfidence}/100.`;
-  }
-  if (totalScore >= 58) {
-    return `${project.clientName} is workable as ${tier}, but execution should stay disciplined because confidence is ${confidence.overallConfidence}/100 and key inputs are incomplete.`;
-  }
-  return `${project.clientName} is currently lower priority. Keep coverage light until fit, stakeholder access, or demand signals improve. Overall confidence: ${confidence.overallConfidence}/100.`;
-}
-
-function buildExecutionPlan(project, tier, intent, confidence) {
-  const base = [];
-
+function executionPlan(project, normalizedAccount, tier) {
   if (tier === "Tier 1") {
-    base.push("Assign clear account owner");
-    base.push("Build bespoke POV deck");
-    base.push("Map 4-6 stakeholders");
-  } else if (tier === "Tier 2") {
-    base.push("Run tailored outbound + paid sequence");
-    base.push("Use vertical and regional proof");
-  } else {
-    base.push("Add to monitored nurture");
-    base.push("Promote on new signal or stakeholder access");
+    return [
+      "Build 1:1 account brief and executive hypothesis",
+      "Coordinate AE, SDR, marketing, and leadership outreach",
+      "Run weekly deal and stakeholder review"
+    ];
   }
 
-  if (intent.stage === "Purchase" || intent.stage === "Decision") {
-    base.push("Run weekly account review");
-  } else {
-    base.push("Run fortnightly signal review");
+  if (tier === "Tier 2") {
+    return [
+      "Run tailored outbound + paid sequence",
+      "Use vertical and regional proof",
+      "Run weekly account review"
+    ];
   }
 
-  if (confidence.intentConfidence < 30) {
-    base.push("Instrument first-party engagement before scaling spend");
-  }
-
-  return base;
+  return [
+    "Add to monitored nurture",
+    "Promote on new signal or stakeholder access",
+    "Run fortnightly signal review"
+  ];
 }
 
-/* -----------------------------
-   PUBLIC ENGINE
------------------------------- */
+/* ---------------------------------
+   EXPLORIUM DIAGNOSTICS SHAPING
+---------------------------------- */
 
-export function buildAbmProjectIntel(project) {
-  const fit = scoreFit(project);
-  const intent = scoreIntent(project.account);
-  const committee = scoreCommittee(project);
-  const relationship = scoreRelationship(project.account);
-  const confidence = buildConfidence(project);
-  const penalties = computePenalties(project, intent, committee);
+export function normalizeExploriumDiagnostics(raw) {
+  const attempted = Boolean(raw?.attempted);
+  const matched = Boolean(raw?.matched);
+  const businessId = raw?.businessId || raw?.business_id || null;
 
-  const raw =
-    fit.score * 0.42 +
-    intent.score * 0.22 +
-    committee.score * 0.16 +
-    relationship.score * 0.10 +
-    (project.account.openOpportunity ? 6 : 0) +
-    (project.account.expansionCandidate ? 4 : 0);
+  const reason =
+    raw?.reason ||
+    raw?.warning ||
+    raw?.error ||
+    (attempted && !matched
+      ? "Explorium enrichment failed; continuing without enrichment."
+      : null);
 
-  const totalScore = clamp(Math.round(raw - penalties.total), 0, 100);
-  const tier = decideTier(totalScore, project, intent);
-  const regionalOverlay = buildRegionalOverlay(project.account.region);
-  const verticalOverlay = buildVerticalOverlay(project.account.vertical);
-  const plays = buildPlays(project, totalScore, intent, committee, tier, confidence);
-  const summary = buildSummary(project, totalScore, tier, intent, confidence);
-  const executionPlan = buildExecutionPlan(project, tier, intent, confidence);
+  const fieldsAdded = Array.isArray(raw?.fieldsAdded) ? raw.fieldsAdded : [];
+  const sourceData = raw?.sourceData || null;
 
   return {
-    summary,
-    totalScore,
-    tier,
-    buyingStage: intent.stage,
-    stageConfidence: intent.stageConfidence,
+    attempted,
+    matched,
+    businessId,
+    reason,
+    fieldsAdded,
+    sourceData
+  };
+}
 
+/* ---------------------------------
+   PROJECT INTELLIGENCE
+---------------------------------- */
+
+export function buildAbmProjectIntel(projectInput, options = {}) {
+  const parsed = abmProjectSchema.parse(projectInput);
+
+  const normalizedSetup = normalizeProgramSetup({
+    clientName: parsed.clientName,
+    objective: parsed.objective,
+    productLine: parsed.productLine,
+    defaultTargetRoles: parsed.targetRoles,
+    defaultICP: parsed.icp,
+    sellerContext: parsed.sellerContext,
+    enrichmentAllowed: parsed.programDefaults?.enrichmentAllowed ?? false
+  });
+
+  const normalizedAccountResult = normalizeAccount(parsed.account);
+  const normalizedAccount = normalizedAccountResult.normalized;
+
+  const project = {
+    clientName: normalizedSetup.clientName,
+    objective: normalizedSetup.objective,
+    productLine: normalizedSetup.productLine,
+    targetRoles: normalizedSetup.defaultTargetRoles,
+    icp: normalizedSetup.defaultICP,
+    sellerContext: normalizedSetup.sellerContext,
+    enrichmentAllowed: normalizedSetup.enrichmentAllowed
+  };
+
+  const fit = fitScore(project, normalizedAccount);
+  const intent = intentScore(normalizedAccount);
+  const committee = committeeCoverage(project, normalizedAccount);
+  const relationship = relationshipComponent(normalizedAccount);
+  const stage = inferBuyingStage(normalizedAccount, intent, committee);
+  const exploriumDiagnostics = normalizeExploriumDiagnostics(options.exploriumDiagnostics);
+  const penalties = computePenalties(project, normalizedAccount, fit, intent, committee);
+  const tiering = tierAndAction(
+    project,
+    normalizedAccount,
+    fit,
+    intent,
+    committee,
+    relationship,
+    penalties
+  );
+
+  const missingDataWarnings = [];
+  if (normalizedAccount.employeeBand === "Unknown") {
+    missingDataWarnings.push("Employee band missing. Firmographic fit is partially inferred.");
+  }
+  if (!normalizedAccount.tech?.securityMaturity) {
+    missingDataWarnings.push("Security maturity unavailable; conservative baseline applied.");
+  }
+  if (!normalizedAccount.committee.length) {
+    missingDataWarnings.push(
+      "No buying committee data provided. Committee coverage is inferred from target roles and marked low-confidence."
+    );
+  }
+
+  if (
+    exploriumDiagnostics.attempted &&
+    !exploriumDiagnostics.matched &&
+    exploriumDiagnostics.reason
+  ) {
+    missingDataWarnings.push(exploriumDiagnostics.reason);
+  }
+
+  const confidenceValue = confidenceFromMissingness(
+    uniqueStrings([...missingDataWarnings, ...committee.warnings]),
+    uniqueStrings([
+      ...normalizedSetup.normalizationWarnings,
+      ...normalizedAccountResult.warnings
+    ]),
+    exploriumDiagnostics
+  );
+
+  const plays = recommendedPlays(project, normalizedAccount, fit, intent, committee, tiering.tier);
+  const plan = executionPlan(project, normalizedAccount, tiering.tier);
+
+  return {
+    clientName: project.clientName,
+    objective: project.objective,
+    productLine: project.productLine,
+    accountName: normalizedAccount.accountName,
+    accountDomain: normalizedAccount.domain,
+    normalizedFields: {
+      vertical: normalizedAccount.vertical,
+      region: normalizedAccount.region,
+      segment: normalizedAccount.segment,
+      gtmMotion: normalizedAccount.gtmMotion,
+      currentPipelineStage: normalizedAccount.currentPipelineStage
+    },
+    normalizationWarnings: uniqueStrings([
+      ...normalizedSetup.normalizationWarnings,
+      ...normalizedAccountResult.warnings
+    ]),
     scores: {
       fit: fit.score,
       intent: intent.score,
       committeeCoverage: committee.score,
       relationship: relationship.score
     },
-
-    confidence,
-
+    totalScore: tiering.totalScore,
+    tier: tiering.tier,
+    buyingStage: stage.buyingStage,
+    stageConfidence: stage.stageConfidence,
+    overallConfidence: confidenceValue,
+    confidence: {
+      overallConfidence: confidenceValue
+    },
+    ownerAction: tiering.ownerAction,
+    minimumNextStep: tiering.minimumNextStep,
+    promotionCriteria:
+      project.sellerContext.promotionTriggerDefinition ||
+      "Promote when fit, demand, and committee evidence justify higher investment.",
+    doNotDo:
+      tiering.tier === "Tier 3"
+        ? "Do not overinvest in bespoke content or heavy paid spend."
+        : "Do not skip committee mapping.",
+    messageHypothesis: messageHypothesis(project, normalizedAccount, fit, intent),
+    recommendedPlays: plays,
+    plays,
+    executionPlan: plan,
+    watchouts: uniqueStrings([...penalties, ...committee.warnings]),
+    missingRoles: committee.missingRoles,
+    missingDataWarnings: uniqueStrings(missingDataWarnings),
+    fitReasons: fit.reasons,
+    fitRisks: fit.risks,
+    topSignals: intent.topSignals,
+    coveredRoles: committee.coveredRoles,
+    penalties,
     explainability: {
+      missingRoles: committee.missingRoles,
+      missingDataWarnings: uniqueStrings(missingDataWarnings),
       fitReasons: fit.reasons,
       fitRisks: fit.risks,
       topSignals: intent.topSignals,
       coveredRoles: committee.coveredRoles,
-      missingRoles: committee.missingRoles,
-      penalties: penalties.penalties,
-      missingDataWarnings: confidence.missingDataWarnings
+      penalties
     },
-
-    overlays: {
-      regional: regionalOverlay,
-      vertical: verticalOverlay
+    explorium: {
+      attempted: exploriumDiagnostics.attempted,
+      matched: exploriumDiagnostics.matched,
+      businessId: exploriumDiagnostics.businessId,
+      reason: exploriumDiagnostics.reason,
+      fieldsAdded: exploriumDiagnostics.fieldsAdded
     },
-
-    committee,
-    plays,
-    executionPlan,
-    watchouts: unique([
-      ...fit.risks,
-      ...penalties.penalties,
-      ...confidence.missingDataWarnings
-    ])
+    assumptionsUsed: {
+      clientName: project.clientName,
+      objective: project.objective,
+      productLine: project.productLine,
+      targetRoles: project.targetRoles,
+      icp: project.icp,
+      sellerContext: project.sellerContext
+    },
+    sourceProvenance: {
+      userProvided: [
+        "clientName",
+        "objective",
+        "productLine",
+        "targetRoles",
+        "ICP preferences",
+        "sellerContext",
+        "account row fields",
+        "signals",
+        "committee members"
+      ],
+      enrichedFacts: exploriumDiagnostics.matched
+        ? exploriumDiagnostics.fieldsAdded?.length
+          ? exploriumDiagnostics.fieldsAdded
+          : ["Explorium matched account enrichment"]
+        : [],
+      derivedByEngine: [
+        "normalized fields",
+        "fit score",
+        "intent score",
+        "committee coverage score",
+        "relationship score",
+        "total score",
+        "tier",
+        "buying stage",
+        "confidence",
+        "plays",
+        "execution plan",
+        "watchouts"
+      ]
+    }
   };
 }
 
-export function prioritizePortfolio({ accounts, topN = 10 }) {
-  const ranked = accounts
-    .map((project) => {
-      const intelligence = buildAbmProjectIntel(project);
-      return {
-        clientName: project.clientName,
-        objective: project.objective,
-        productLine: project.productLine,
-        accountName: project.account.accountName,
-        vertical: project.account.vertical,
-        region: project.account.region,
-        totalScore: intelligence.totalScore,
-        tier: intelligence.tier,
-        buyingStage: intelligence.buyingStage,
-        overallConfidence: intelligence.confidence.overallConfidence,
-        topReasons: intelligence.explainability.fitReasons.slice(0, 3),
-        keySignals: intelligence.explainability.topSignals.slice(0, 3),
-        missingRoles: intelligence.explainability.missingRoles,
-        recommendedPlays: intelligence.plays.slice(0, 4),
-        intelligence
-      };
-    })
-    .sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      return b.overallConfidence - a.overallConfidence;
-    });
+/* ---------------------------------
+   PORTFOLIO
+---------------------------------- */
+
+function toProjectShape(accountProject) {
+  if (accountProject?.account && accountProject?.icp && accountProject?.sellerContext) {
+    return accountProject;
+  }
 
   return {
-    summary: {
-      totalAccounts: ranked.length,
-      tier1: ranked.filter((a) => a.tier === "Tier 1").length,
-      tier2: ranked.filter((a) => a.tier === "Tier 2").length,
-      tier3: ranked.filter((a) => a.tier === "Tier 3").length
+    clientName: accountProject?.clientName || "Unknown Client",
+    objective: accountProject?.objective || "Other",
+    productLine: accountProject?.productLine || "Unknown Product",
+    targetRoles: Array.isArray(accountProject?.targetRoles) && accountProject.targetRoles.length
+      ? accountProject.targetRoles
+      : ["Economic Buyer", "Technical Buyer", "Champion"],
+    icp: accountProject?.icp || {
+      preferredVerticals: ["Other"],
+      preferredRegions: ["Other"],
+      preferredSegments: ["Other"],
+      preferredMotions: ["Other"],
+      requiredTech: [],
+      excludedVerticals: [],
+      excludedRegions: [],
+      excludedSignals: []
     },
-    topAccounts: ranked.slice(0, topN),
-    allAccounts: ranked
+    sellerContext: accountProject?.sellerContext || {
+      ownerName: "Unknown Owner",
+      ownerRole: null,
+      motionOwner: null,
+      channelsAvailable: [],
+      promotionTriggerDefinition:
+        "Promote when fit, demand, and committee evidence justify higher investment."
+    },
+    programDefaults: accountProject?.programDefaults || {
+      enrichmentAllowed: false
+    },
+    account: accountProject?.account || {
+      accountName: accountProject?.accountName || "Unknown Account",
+      vertical: accountProject?.vertical || "Other",
+      region: accountProject?.region || "Other",
+      segment: accountProject?.segment || "Other",
+      gtmMotion: "Other",
+      currentPipelineStage: "No Opportunity",
+      signals: [],
+      committee: [],
+      tech: {}
+    }
+  };
+}
+
+export function prioritizePortfolio(portfolioInput) {
+  const parsed = portfolioSchema.parse(portfolioInput);
+
+  const scored = parsed.accounts.map((accountProject) => {
+    const intel = buildAbmProjectIntel(toProjectShape(accountProject));
+    return {
+      accountName: intel.accountName,
+      accountDomain: intel.accountDomain,
+      totalScore: intel.totalScore,
+      tier: intel.tier,
+      buyingStage: intel.buyingStage,
+      overallConfidence: intel.overallConfidence,
+      ownerAction: intel.ownerAction,
+      minimumNextStep: intel.minimumNextStep,
+      missingRoles: intel.missingRoles,
+      fitReasons: intel.fitReasons,
+      penalties: intel.penalties,
+      fullIntelligence: intel
+    };
+  });
+
+  scored.sort((a, b) => b.totalScore - a.totalScore);
+
+  const counts = scored.reduce(
+    (acc, row) => {
+      acc[row.tier] = (acc[row.tier] || 0) + 1;
+      return acc;
+    },
+    { "Tier 1": 0, "Tier 2": 0, "Tier 3": 0 }
+  );
+
+  return {
+    totalAccounts: scored.length,
+    summary: counts,
+    topAccounts: scored.slice(0, Math.max(1, Number(parsed.topN || 10))),
+    allAccounts: scored
+  };
+}
+
+/* ---------------------------------
+   CSV BATCH
+---------------------------------- */
+
+function splitCsvLine(line) {
+  const out = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (ch === '"' && inQuotes && next === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      out.push(current);
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  out.push(current);
+  return out;
+}
+
+function parseCsv(text) {
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+
+  if (!lines.length) {
+    return { headers: [], rows: [] };
+  }
+
+  const headers = splitCsvLine(lines[0]).map((h) => cleanString(h));
+  const rows = lines.slice(1).map((line) => {
+    const cells = splitCsvLine(line);
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = cleanString(cells[idx] ?? "");
+    });
+    return row;
+  });
+
+  return { headers, rows };
+}
+
+function parseSignalsCell(value) {
+  if (!cleanString(value)) return [];
+  return value
+    .split("|")
+    .map((chunk) => {
+      const [signalType, strength, recencyDays] = chunk.split(":");
+      return {
+        signalType: cleanString(signalType),
+        strength: Number(strength || 0),
+        recencyDays: Number(recencyDays || 3650)
+      };
+    })
+    .filter((s) => s.signalType);
+}
+
+function parseCommitteeCell(value) {
+  if (!cleanString(value)) return [];
+  return value
+    .split("|")
+    .map((chunk) => {
+      const [name, title, role, relationshipStrength, engaged] = chunk.split(";");
+      return {
+        name: cleanString(name),
+        title: cleanString(title),
+        role: cleanString(role),
+        relationshipStrength: Number(relationshipStrength || 0),
+        engaged: lower(engaged) === "true"
+      };
+    })
+    .filter((m) => m.name);
+}
+
+function csvEscape(v) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+export function scoreAbmCsvBatch({ csvText, programSetup, enrichRow }) {
+  const setup = normalizeProgramSetup(programSetup);
+  const parsedCsv = parseCsv(csvText);
+
+  const scoredRows = [];
+  const rowErrors = [];
+  const normalizationWarnings = [];
+  const enrichmentSummary = [];
+
+  for (let index = 0; index < parsedCsv.rows.length; index += 1) {
+    const row = parsedCsv.rows[index];
+    try {
+      const account = {
+        accountName: row.account_name || row.accountName,
+        domain: row.account_domain || row.accountDomain || undefined,
+        vertical: row.vertical || undefined,
+        region: row.region || undefined,
+        segment: row.segment || undefined,
+        gtmMotion: row.gtm_motion || row.gtmMotion || undefined,
+        employeeBand: row.employee_band || row.employeeBand || undefined,
+        openOpportunity: row.open_opportunity || row.openOpportunity || false,
+        currentPipelineStage:
+          row.current_pipeline_stage || row.currentPipelineStage || "No Opportunity",
+        firstPartyEngagementScore:
+          row.first_party_engagement_score || row.firstPartyEngagementScore || 0,
+        thirdPartyIntentScore:
+          row.third_party_intent_score || row.thirdPartyIntentScore || 0,
+        relationshipScore: row.relationship_score || row.relationshipScore || 0,
+        signals: parseSignalsCell(row.signals),
+        committee: parseCommitteeCell(row.committee_members || row.committee)
+      };
+
+      const baseProject = {
+        clientName: setup.clientName,
+        objective: setup.objective,
+        productLine: setup.productLine,
+        targetRoles: setup.defaultTargetRoles,
+        icp: setup.defaultICP,
+        sellerContext: setup.sellerContext,
+        programDefaults: { enrichmentAllowed: setup.enrichmentAllowed },
+        account
+      };
+
+      const projectParsed = abmProjectSchema.safeParse(baseProject);
+      if (!projectParsed.success) {
+        rowErrors.push({
+          rowNumber: index + 2,
+          accountName: account.accountName || null,
+          errors: validationErrorsToFieldMap(projectParsed.error)
+        });
+        continue;
+      }
+
+      let exploriumDiagnostics = {
+        attempted: false,
+        matched: false,
+        businessId: null,
+        reason: null,
+        fieldsAdded: []
+      };
+
+      if (setup.enrichmentAllowed && typeof enrichRow === "function") {
+        try {
+          const enrichment = enrichRow(projectParsed.data);
+          exploriumDiagnostics = normalizeExploriumDiagnostics(enrichment);
+        } catch (e) {
+          exploriumDiagnostics = normalizeExploriumDiagnostics({
+            attempted: true,
+            matched: false,
+            reason: e?.message || "Explorium enrichment threw an unexpected error."
+          });
+        }
+      }
+
+      const intel = buildAbmProjectIntel(projectParsed.data, { exploriumDiagnostics });
+
+      normalizationWarnings.push(
+        ...intel.normalizationWarnings.map((w) => ({
+          rowNumber: index + 2,
+          accountName: intel.accountName,
+          warning: w
+        }))
+      );
+
+      enrichmentSummary.push({
+        rowNumber: index + 2,
+        accountName: intel.accountName,
+        attempted: intel.explorium.attempted,
+        matched: intel.explorium.matched,
+        businessId: intel.explorium.businessId,
+        reason: intel.explorium.reason,
+        fieldsAdded: intel.explorium.fieldsAdded
+      });
+
+      scoredRows.push(intel);
+    } catch (e) {
+      rowErrors.push({
+        rowNumber: index + 2,
+        accountName: row.account_name || row.accountName || null,
+        errors: { form: [e?.message || "Unexpected batch scoring error."] }
+      });
+    }
+  }
+
+  const summary = {
+    totalRows: parsedCsv.rows.length,
+    scoredRows: scoredRows.length,
+    errorRows: rowErrors.length,
+    tier1: scoredRows.filter((r) => r.tier === "Tier 1").length,
+    tier2: scoredRows.filter((r) => r.tier === "Tier 2").length,
+    tier3: scoredRows.filter((r) => r.tier === "Tier 3").length
+  };
+
+  scoredRows.sort((a, b) => b.totalScore - a.totalScore);
+
+  const outputHeaders = [
+    "clientName",
+    "accountName",
+    "accountDomain",
+    "vertical",
+    "region",
+    "segment",
+    "objective",
+    "productLine",
+    "totalScore",
+    "tier",
+    "buyingStage",
+    "stageConfidence",
+    "fitScore",
+    "intentScore",
+    "committeeCoverageScore",
+    "relationshipScore",
+    "overallConfidence",
+    "ownerAction",
+    "minimumNextStep",
+    "promotionCriteria",
+    "doNotDo",
+    "messageHypothesis",
+    "recommendedPlays",
+    "executionPlan",
+    "watchouts",
+    "missingRoles",
+    "missingDataWarnings",
+    "normalizationWarnings",
+    "exploriumAttempted",
+    "exploriumMatched",
+    "exploriumBusinessId",
+    "exploriumReason",
+    "exploriumFieldsAdded",
+    "fitReasons",
+    "fitRisks",
+    "topSignals",
+    "coveredRoles",
+    "penalties"
+  ];
+
+  const outputRows = scoredRows.map((r) => ({
+    clientName: r.clientName,
+    accountName: r.accountName,
+    accountDomain: r.accountDomain || "",
+    vertical: r.normalizedFields.vertical,
+    region: r.normalizedFields.region,
+    segment: r.normalizedFields.segment,
+    objective: r.objective,
+    productLine: r.productLine,
+    totalScore: r.totalScore,
+    tier: r.tier,
+    buyingStage: r.buyingStage,
+    stageConfidence: r.stageConfidence,
+    fitScore: r.scores.fit,
+    intentScore: r.scores.intent,
+    committeeCoverageScore: r.scores.committeeCoverage,
+    relationshipScore: r.scores.relationship,
+    overallConfidence: r.overallConfidence,
+    ownerAction: r.ownerAction,
+    minimumNextStep: r.minimumNextStep,
+    promotionCriteria: r.promotionCriteria,
+    doNotDo: r.doNotDo,
+    messageHypothesis: r.messageHypothesis,
+    recommendedPlays: r.recommendedPlays.join(" | "),
+    executionPlan: r.executionPlan.join(" | "),
+    watchouts: r.watchouts.join(" | "),
+    missingRoles: r.missingRoles.join(" | "),
+    missingDataWarnings: r.missingDataWarnings.join(" | "),
+    normalizationWarnings: r.normalizationWarnings.join(" | "),
+    exploriumAttempted: r.explorium.attempted,
+    exploriumMatched: r.explorium.matched,
+    exploriumBusinessId: r.explorium.businessId || "",
+    exploriumReason: r.explorium.reason || "",
+    exploriumFieldsAdded: (r.explorium.fieldsAdded || []).join(" | "),
+    fitReasons: r.fitReasons.join(" | "),
+    fitRisks: r.fitRisks.join(" | "),
+    topSignals: r.topSignals.join(" | "),
+    coveredRoles: r.coveredRoles.join(" | "),
+    penalties: r.penalties.join(" | ")
+  }));
+
+  const outputCsv = [
+    outputHeaders.join(","),
+    ...outputRows.map((row) => outputHeaders.map((h) => csvEscape(row[h])).join(","))
+  ].join("\n");
+
+  return {
+    programSetup: setup,
+    summary,
+    topAccounts: scoredRows.slice(0, 10).map((r) => ({
+      accountName: r.accountName,
+      totalScore: r.totalScore,
+      tier: r.tier,
+      buyingStage: r.buyingStage,
+      overallConfidence: r.overallConfidence,
+      ownerAction: r.ownerAction,
+      minimumNextStep: r.minimumNextStep,
+      missingRoles: r.missingRoles
+    })),
+    scoredRows,
+    rowErrors,
+    normalizationWarnings,
+    enrichmentSummary,
+    outputCsv
   };
 }
