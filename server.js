@@ -184,6 +184,314 @@ function buildSkippedEnrichmentResult(reason) {
   };
 }
 
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+function parseBooleanLoose(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  const s = cleanText(value).toLowerCase();
+  if (["true", "yes", "y", "1"].includes(s)) return true;
+  if (["false", "no", "n", "0"].includes(s)) return false;
+  return fallback;
+}
+
+function uniqueStrings(arr) {
+  return [...new Set((arr || []).map((x) => cleanText(x)).filter(Boolean))];
+}
+
+function splitListish(value) {
+  if (Array.isArray(value)) {
+    return uniqueStrings(value);
+  }
+
+  const text = cleanText(value);
+  if (!text) return [];
+
+  return uniqueStrings(text.split(/[\n,|;]+/g));
+}
+
+function pickFirstFilled(...values) {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) {
+      return value;
+    }
+    if (cleanText(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function inferObjective(value) {
+  const s = cleanText(value).toLowerCase();
+  if (!s) return "Net New";
+  if (s.includes("expand")) return "Expansion";
+  if (s.includes("cross")) return "Cross-Sell";
+  if (s.includes("up")) return "Upsell";
+  if (s.includes("retain") || s.includes("renew")) return "Retention";
+  if (s.includes("new") || s.includes("pipeline") || s.includes("logo")) return "Net New";
+  return cleanText(value);
+}
+
+function normalizeTargetRolesInput(value) {
+  const roles = splitListish(value);
+  return roles.length ? roles : ["Economic Buyer", "Technical Buyer", "Champion"];
+}
+
+function normalizeIcpList(value, fallback) {
+  const items = splitListish(value);
+  return items.length ? items : fallback;
+}
+
+function buildSuggestedSetupQuestions(draft) {
+  const questions = [];
+
+  if (!cleanText(draft.clientName)) {
+    questions.push("What company or client is this ABM program for?");
+  }
+  if (!cleanText(draft.productLine)) {
+    questions.push("What product or offering are you selling?");
+  }
+  if (!Array.isArray(draft.defaultTargetRoles) || draft.defaultTargetRoles.length === 0) {
+    questions.push("Which buying roles matter most?");
+  }
+
+  return questions;
+}
+
+function buildProgramSetupFromConversation(rawArgs) {
+  const source =
+    rawArgs?.brief && typeof rawArgs.brief === "object"
+      ? rawArgs.brief
+      : rawArgs || {};
+
+  const appliedDefaults = [];
+
+  const clientName = cleanText(
+    pickFirstFilled(
+      source.clientName,
+      source.client,
+      source.companyName,
+      source.brandName
+    )
+  );
+
+  const productLine = cleanText(
+    pickFirstFilled(
+      source.productLine,
+      source.whatYouSell,
+      source.offering,
+      source.solution,
+      source.product
+    )
+  );
+
+  const objectiveInput = pickFirstFilled(
+    source.objective,
+    source.goal,
+    source.primaryGoal,
+    source.useCase
+  );
+  const objective = inferObjective(objectiveInput);
+  if (!cleanText(objectiveInput)) {
+    appliedDefaults.push('objective="Net New"');
+  }
+
+  const defaultTargetRoles = normalizeTargetRolesInput(
+    pickFirstFilled(
+      source.defaultTargetRoles,
+      source.targetRoles,
+      source.buyingRoles,
+      source.roles
+    )
+  );
+  if (
+    !pickFirstFilled(
+      source.defaultTargetRoles,
+      source.targetRoles,
+      source.buyingRoles,
+      source.roles
+    )
+  ) {
+    appliedDefaults.push(
+      'defaultTargetRoles=["Economic Buyer","Technical Buyer","Champion"]'
+    );
+  }
+
+  const preferredVerticals = normalizeIcpList(
+    pickFirstFilled(
+      source.preferredVerticals,
+      source.verticals,
+      source.icpVerticals
+    ),
+    ["Technology"]
+  );
+  if (
+    !pickFirstFilled(
+      source.preferredVerticals,
+      source.verticals,
+      source.icpVerticals
+    )
+  ) {
+    appliedDefaults.push('preferredVerticals=["Technology"]');
+  }
+
+  const preferredRegions = normalizeIcpList(
+    pickFirstFilled(
+      source.preferredRegions,
+      source.regions,
+      source.icpRegions
+    ),
+    ["North America"]
+  );
+  if (
+    !pickFirstFilled(
+      source.preferredRegions,
+      source.regions,
+      source.icpRegions
+    )
+  ) {
+    appliedDefaults.push('preferredRegions=["North America"]');
+  }
+
+  const preferredSegments = normalizeIcpList(
+    pickFirstFilled(
+      source.preferredSegments,
+      source.segments,
+      source.icpSegments
+    ),
+    ["Mid-Market", "Enterprise"]
+  );
+  if (
+    !pickFirstFilled(
+      source.preferredSegments,
+      source.segments,
+      source.icpSegments
+    )
+  ) {
+    appliedDefaults.push('preferredSegments=["Mid-Market","Enterprise"]');
+  }
+
+  const preferredMotions = normalizeIcpList(
+    pickFirstFilled(
+      source.preferredMotions,
+      source.motions,
+      source.gtmMotions
+    ),
+    ["Sales-Led", "Hybrid"]
+  );
+  if (
+    !pickFirstFilled(
+      source.preferredMotions,
+      source.motions,
+      source.gtmMotions
+    )
+  ) {
+    appliedDefaults.push('preferredMotions=["Sales-Led","Hybrid"]');
+  }
+
+  const ownerName = cleanText(
+    pickFirstFilled(
+      source.ownerName,
+      source.executionOwner,
+      source.sellerName,
+      source.owner
+    )
+  ) || "Program Owner";
+  if (
+    !pickFirstFilled(
+      source.ownerName,
+      source.executionOwner,
+      source.sellerName,
+      source.owner
+    )
+  ) {
+    appliedDefaults.push('sellerContext.ownerName="Program Owner"');
+  }
+
+  const ownerRole = cleanText(
+    pickFirstFilled(
+      source.ownerRole,
+      source.executionOwnerRole,
+      source.sellerRole
+    )
+  );
+
+  const motionOwner = cleanText(
+    pickFirstFilled(
+      source.motionOwner,
+      source.executionTeam,
+      source.executionFunction
+    )
+  );
+
+  const channelsAvailable = normalizeIcpList(
+    pickFirstFilled(
+      source.channelsAvailable,
+      source.channels,
+      source.outreachChannels
+    ),
+    ["Email", "LinkedIn"]
+  );
+  if (
+    !pickFirstFilled(
+      source.channelsAvailable,
+      source.channels,
+      source.outreachChannels
+    )
+  ) {
+    appliedDefaults.push('sellerContext.channelsAvailable=["Email","LinkedIn"]');
+  }
+
+  const requiredTech = splitListish(
+    pickFirstFilled(source.requiredTech, source.techRequirements)
+  );
+  const excludedVerticals = splitListish(source.excludedVerticals);
+  const excludedRegions = splitListish(source.excludedRegions);
+  const excludedSignals = splitListish(source.excludedSignals);
+
+  const promotionTriggerDefinition =
+    cleanText(source.promotionTriggerDefinition) ||
+    "Promote when fit, demand, and committee evidence justify higher investment.";
+
+  const enrichmentAllowed = parseBooleanLoose(source.enrichmentAllowed, true);
+  if (source.enrichmentAllowed === undefined) {
+    appliedDefaults.push("enrichmentAllowed=true");
+  }
+
+  const candidateSetup = {
+    clientName,
+    objective,
+    productLine,
+    defaultTargetRoles,
+    defaultICP: {
+      preferredVerticals,
+      preferredRegions,
+      preferredSegments,
+      preferredMotions,
+      requiredTech,
+      excludedVerticals,
+      excludedRegions,
+      excludedSignals
+    },
+    sellerContext: {
+      ownerName,
+      ownerRole: ownerRole || undefined,
+      motionOwner: motionOwner || undefined,
+      channelsAvailable,
+      promotionTriggerDefinition
+    },
+    enrichmentAllowed
+  };
+
+  return {
+    candidateSetup,
+    appliedDefaults,
+    suggestedQuestions: buildSuggestedSetupQuestions(candidateSetup)
+  };
+}
+
 /* -----------------------------
    AUTH VALIDATION
 ------------------------------ */
@@ -494,7 +802,7 @@ async function enrichProjectOptionally(project, enrichmentAllowed = true) {
 ------------------------------ */
 
 async function createMcp(auth) {
-  const mcp = new McpServer({ name: "gtmhelix-abm", version: "1.2.0" });
+  const mcp = new McpServer({ name: "gtmhelix-abm", version: "1.3.0" });
 
   await initWorkspaceStore({ pool });
   const workspaceId = await resolveWorkspaceId({ tenantId: auth.tenantId, pool });
@@ -544,29 +852,55 @@ async function createMcp(auth) {
     {
       title: "Setup ABM program defaults",
       description:
-        "Use this after asking the user 4-5 setup questions once for the whole batch: client/product, objective, default ICP, target buying roles, execution owner, and whether factual enrichment is allowed. Return normalized defaults that can be reused for single-account or CSV batch scoring.",
+        "Use this after asking the user a few setup questions once for the whole batch. It accepts either the full strict setup schema or a simpler conversational payload like whatYouSell, goal, roles, verticals, regions, segments, motions, executionOwner, channels, and enrichmentAllowed. It returns normalized defaults that can be reused for single-account or CSV batch scoring.",
       inputSchema: z.any(),
       annotations: { readOnlyHint: true }
     },
     async (rawArgs) => {
-      const parsed = programSetupSchema.safeParse(rawArgs);
-      if (!parsed.success) {
+      const strictParsed = programSetupSchema.safeParse(rawArgs);
+
+      if (strictParsed.success) {
         return reply({
-          message: "Program setup input is invalid.",
+          message: "Program defaults captured.",
+          structuredContent: {
+            ok: true,
+            workspaceId,
+            inputMode: "strict",
+            setup: strictParsed.data,
+            appliedDefaults: [],
+            nextStep:
+              "Ask the user to paste CSV content or upload a sheet and then use score_abm_csv_batch with these defaults."
+          }
+        });
+      }
+
+      const { candidateSetup, appliedDefaults, suggestedQuestions } =
+        buildProgramSetupFromConversation(rawArgs);
+
+      const conversationalParsed = programSetupSchema.safeParse(candidateSetup);
+
+      if (!conversationalParsed.success) {
+        return reply({
+          message: "I still need a few setup details before I can lock the ABM defaults.",
           structuredContent: {
             ok: false,
-            fieldErrors: validationErrorsToFieldMap(parsed.error),
-            draftSetup: rawArgs
+            inputMode: "conversational",
+            fieldErrors: validationErrorsToFieldMap(conversationalParsed.error),
+            draftSetup: candidateSetup,
+            appliedDefaults,
+            suggestedQuestions
           }
         });
       }
 
       return reply({
-        message: "Program defaults captured.",
+        message: "Program defaults captured from conversational input.",
         structuredContent: {
           ok: true,
           workspaceId,
-          setup: parsed.data,
+          inputMode: "conversational",
+          setup: conversationalParsed.data,
+          appliedDefaults,
           nextStep:
             "Ask the user to paste CSV content or upload a sheet and then use score_abm_csv_batch with these defaults."
         }
@@ -793,13 +1127,14 @@ async function createMcp(auth) {
 
       const outputCsv = buildBatchOutputCsv(scoredRows);
 
-const prioritized = {
-  summary: {
-    "Tier 1": scoredRows.filter((r) => r.tier === "Tier 1").length,
-    "Tier 2": scoredRows.filter((r) => r.tier === "Tier 2").length,
-    "Tier 3": scoredRows.filter((r) => r.tier === "Tier 3").length
-  }
-};
+      const prioritized = {
+        summary: {
+          "Tier 1": scoredRows.filter((r) => r.tier === "Tier 1").length,
+          "Tier 2": scoredRows.filter((r) => r.tier === "Tier 2").length,
+          "Tier 3": scoredRows.filter((r) => r.tier === "Tier 3").length
+        }
+      };
+
       return reply({
         message: "CSV batch scored.",
         structuredContent: {
@@ -819,7 +1154,9 @@ const prioritized = {
               (r) => r.exploriumMatched === "true"
             ).length,
             enrichmentFieldsAddedRows: scoredRows.filter(
-              (r) => typeof r.exploriumFieldsAdded === "string" && r.exploriumFieldsAdded.length > 0
+              (r) =>
+                typeof r.exploriumFieldsAdded === "string" &&
+                r.exploriumFieldsAdded.length > 0
             ).length
           },
           rowErrors,
