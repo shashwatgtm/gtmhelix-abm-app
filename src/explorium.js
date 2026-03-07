@@ -4,6 +4,86 @@ const EXPLORIUM_BASE_URL = (
 ).replace(/\/+$/, "");
 const EXPLORIUM_ENABLED =
   (process.env.EXPLORIUM_ENABLED || "").toLowerCase() === "true";
+const EXPLORIUM_TENANT = (process.env.EXPLORIUM_TENANT || "").trim();
+
+const MAX_BULK_ENRICHMENT_COMPANIES = 15;
+const DEFAULT_SINGLE_ENRICHMENTS = ["firmographics", "technographics"];
+
+const BUSINESS_ENRICHMENTS = {
+  firmographics: {
+    slug: "firmographics",
+    requiresParameters: false,
+    normalize: normalizeFirmographics
+  },
+  technographics: {
+    slug: "technographics",
+    requiresParameters: false,
+    normalize: normalizeTechnographics
+  },
+  companySocialMedia: {
+    slug: "linkedin_posts",
+    requiresParameters: false,
+    defaultParameters: { offline_mode: true },
+    normalize: normalizeLinkedinPosts
+  },
+  keywordSearchOnWebsites: {
+    slug: "company_website_keywords",
+    requiresParameters: true,
+    normalize: normalizeWebsiteKeywords,
+    validateParameters(parameters) {
+      return Array.isArray(parameters?.keywords) && parameters.keywords.length > 0;
+    },
+    validationMessage:
+      "keywordSearchOnWebsites requires parameters.keywords as a non-empty array."
+  },
+  financialMetrics: {
+    slug: "financial_indicators",
+    requiresParameters: false,
+    normalize: normalizeFinancialMetrics
+  },
+  fundingAndAcquisitions: {
+    slug: "funding_and_acquisition",
+    requiresParameters: false,
+    normalize: normalizeFundingAndAcquisitions
+  },
+  businessChallenges: {
+    slug: "pc_business_challenges_10k",
+    requiresParameters: false,
+    normalize: normalizeBusinessChallenges
+  },
+  competitiveLandscape: {
+    slug: "pc_competitive_landscape_10k",
+    requiresParameters: false,
+    normalize: normalizeCompetitiveLandscape
+  },
+  strategicInsights: {
+    slug: "pc_strategy_10k",
+    requiresParameters: false,
+    normalize: normalizeStrategicInsights
+  },
+  webstack: {
+    slug: "webstack",
+    requiresParameters: false,
+    normalize: normalizeWebstack
+  },
+  companyHierarchy: {
+    // Inferred slug. Explorium's company-hierarchy doc page errored during audit,
+    // so this one should be validated in your tenant before relying on it heavily.
+    slug: "company_hierarchy",
+    requiresParameters: false,
+    normalize: normalizeCompanyHierarchy
+  },
+  businessWebsiteTraffic: {
+    slug: "website_traffic",
+    requiresParameters: false,
+    normalize: normalizeWebsiteTraffic
+  },
+  businessIntentTopicsBombora: {
+    slug: "bombora_intent",
+    requiresParameters: false,
+    normalize: normalizeBomboraIntent
+  }
+};
 
 function isEnabled() {
   return EXPLORIUM_ENABLED && Boolean(EXPLORIUM_API_KEY);
@@ -11,7 +91,7 @@ function isEnabled() {
 
 function compactObject(obj) {
   return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    Object.entries(obj || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
   );
 }
 
@@ -43,6 +123,12 @@ function firstArrayItem(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return [];
+  return [value];
+}
+
 function unwrapPayload(payload) {
   if (!payload || typeof payload !== "object") return {};
 
@@ -60,12 +146,18 @@ function unwrapPayload(payload) {
 }
 
 async function exploriumFetch(path, body) {
+  const headers = {
+    "content-type": "application/json",
+    api_key: EXPLORIUM_API_KEY
+  };
+
+  if (EXPLORIUM_TENANT) {
+    headers.tenant = EXPLORIUM_TENANT;
+  }
+
   const res = await fetch(`${EXPLORIUM_BASE_URL}${path}`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      api_key: EXPLORIUM_API_KEY
-    },
+    headers,
     body: JSON.stringify(body)
   });
 
@@ -82,6 +174,7 @@ async function exploriumFetch(path, body) {
     const err = new Error(`Explorium request failed: ${res.status}`);
     err.status = res.status;
     err.payload = json;
+    err.path = path;
     throw err;
   }
 
@@ -204,6 +297,11 @@ function normalizeFirmographics(payload) {
       data.linkedin_url ||
       data.linkedin_company_url,
     logo: data.business_logo || data.logo || data.logo_url,
+    countryName: data.country_name,
+    regionName: data.region_name,
+    cityName: data.city_name,
+    website: data.website,
+    description: data.business_description,
     raw: data
   });
 }
@@ -241,10 +339,137 @@ function normalizeTechnographics(payload) {
       ["GCP", /\bgcp\b|google cloud/]
     ]) || data.cloud;
 
+  const fullTechStack = asArray(data.full_tech_stack);
+  const webstackTech = asArray(data.technologies_used_by_company_website);
+
   return compactObject({
     crm,
     map,
     cloud,
+    fullTechStack,
+    webstackTech,
+    raw: data
+  });
+}
+
+function normalizeLinkedinPosts(payload) {
+  const data = payload?.data;
+  const posts = Array.isArray(data) ? data : asArray(unwrapPayload(payload));
+
+  const normalizedPosts = posts
+    .map((post) =>
+      compactObject({
+        displayName: post.display_name,
+        postText: post.post_text,
+        daysSincePosted: post.days_since_posted,
+        postUrl: post.post_url,
+        numberOfComments: post.number_of_comments,
+        numberOfLikes: post.number_of_likes,
+        createdAt: post.created_at
+      })
+    )
+    .filter((x) => Object.keys(x).length > 0);
+
+  return compactObject({
+    postCount: normalizedPosts.length,
+    latestPostDate: normalizedPosts[0]?.createdAt,
+    latestPostUrl: normalizedPosts[0]?.postUrl,
+    posts: normalizedPosts.slice(0, 5),
+    raw: payload
+  });
+}
+
+function normalizeWebsiteKeywords(payload) {
+  const data = unwrapPayload(payload);
+
+  return compactObject({
+    url: data.url,
+    keywordsIndicator: data.keywords_indicator,
+    textResults: asArray(data.text_results).slice(0, 10),
+    raw: data
+  });
+}
+
+function normalizeFinancialMetrics(payload) {
+  const data = unwrapPayload(payload);
+
+  return compactObject({
+    revenueYearly: data.revenue_yearly,
+    ebitda: data.ebitda,
+    cagr: data.cagr,
+    priceEarningsRatio: data.price_earnings_ratio,
+    enterpriseValueOverEbitda: data.enterprise_value_over_ebitda,
+    leadership: data.leadership,
+    peerCompanies: data.peer_companies,
+    raw: data
+  });
+}
+
+function normalizeFundingAndAcquisitions(payload) {
+  const data = unwrapPayload(payload);
+  return compactObject({ raw: data });
+}
+
+function normalizeBusinessChallenges(payload) {
+  const data = unwrapPayload(payload);
+  return compactObject({ raw: data });
+}
+
+function normalizeCompetitiveLandscape(payload) {
+  const data = unwrapPayload(payload);
+  return compactObject({ raw: data });
+}
+
+function normalizeStrategicInsights(payload) {
+  const data = unwrapPayload(payload);
+  return compactObject({ raw: data });
+}
+
+function normalizeWebstack(payload) {
+  const data = unwrapPayload(payload);
+
+  return compactObject({
+    companyVertical: data.company_vertical,
+    spend: data.spend,
+    ecommerce: data.ecommerce,
+    paymentOptions: data.payment_options,
+    technologiesUsed: asArray(data.technologies_used_by_company_website),
+    categoriesToTechnologiesTree: data.categories_to_technologies_tree,
+    raw: data
+  });
+}
+
+function normalizeCompanyHierarchy(payload) {
+  const data = unwrapPayload(payload);
+
+  return compactObject({
+    inputCompanyId: data.input_company_id,
+    inputCompanyName: data.input_company_name,
+    parentCompanyId: data.parent_company_id,
+    parentCompany: data.parent_company,
+    ultimateParentId: data.ultimate_parent_id,
+    ultimateParentName: data.ultimate_parent_name,
+    subsidiaries: data.subsidiaries,
+    orgTreeJson: data.org_tree_json,
+    raw: data
+  });
+}
+
+function normalizeWebsiteTraffic(payload) {
+  const data = unwrapPayload(payload);
+  return compactObject({ raw: data });
+}
+
+function normalizeBomboraIntent(payload) {
+  const data = unwrapPayload(payload);
+
+  return compactObject({
+    levelOfIntent: data.level_of_intent,
+    topicCount: data.topic_count,
+    intentTopics: data.intent_topics,
+    companyWebsite: data.company_website,
+    companyName: data.company_name,
+    date: data.date || data.date_stamp,
     raw: data
   });
 }
@@ -269,19 +494,75 @@ function maybePush(arr, value) {
 function hasMeaningfulEnrichment(enrichmentObj) {
   if (!enrichmentObj || typeof enrichmentObj !== "object") return false;
 
-  return Boolean(
-    enrichmentObj.employeeBand ||
-      enrichmentObj.revenueBand ||
-      enrichmentObj.linkedinIndustryCategory ||
-      enrichmentObj.linkedinProfile ||
-      enrichmentObj.logo ||
-      enrichmentObj.crm ||
-      enrichmentObj.map ||
-      enrichmentObj.cloud
-  );
+  const keys = Object.keys(enrichmentObj).filter((key) => key !== "raw");
+  if (keys.length === 0) return false;
+
+  return keys.some((key) => {
+    const value = enrichmentObj[key];
+    if (value == null) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "object") return Object.keys(value).length > 0;
+    return value !== "";
+  });
 }
 
-export async function enrichBusinessOptional({ accountName, domain, linkedinUrl }) {
+function getEnrichmentDefinition(name) {
+  return BUSINESS_ENRICHMENTS[name] || null;
+}
+
+function buildSingleEnrichmentPayload(definition, businessId, parameters = {}) {
+  const mergedParameters = compactObject({
+    ...(definition.defaultParameters || {}),
+    ...(parameters || {})
+  });
+
+  return compactObject({
+    business_id: businessId,
+    request_context: null,
+    parameters: mergedParameters
+  });
+}
+
+async function runSingleEnrichment({ enrichmentName, businessId, parameters = {} }) {
+  const definition = getEnrichmentDefinition(enrichmentName);
+
+  if (!definition) {
+    throw new Error(`Unknown Explorium enrichment: ${enrichmentName}`);
+  }
+
+  if (
+    definition.requiresParameters &&
+    typeof definition.validateParameters === "function" &&
+    !definition.validateParameters(parameters)
+  ) {
+    const err = new Error(
+      definition.validationMessage ||
+        `Missing required parameters for enrichment "${enrichmentName}".`
+    );
+    err.status = 422;
+    throw err;
+  }
+
+  const payload = buildSingleEnrichmentPayload(definition, businessId, parameters);
+  const path = `/v1/businesses/${definition.slug}/enrich`;
+  const response = await exploriumFetch(path, payload);
+
+  return {
+    enrichmentName,
+    path,
+    payload,
+    normalized: definition.normalize(response),
+    raw: response
+  };
+}
+
+export async function enrichBusinessOptional({
+  accountName,
+  domain,
+  linkedinUrl,
+  enrichmentNames = DEFAULT_SINGLE_ENRICHMENTS,
+  enrichmentParameters = {}
+}) {
   const diagnostics = buildDiagnosticsBase();
 
   if (!isEnabled()) {
@@ -339,54 +620,83 @@ export async function enrichBusinessOptional({ accountName, domain, linkedinUrl 
     diagnostics.businessId = businessId;
     diagnostics.reason = "Matched business and attempted enrichment.";
 
-    const [firmographicsResult, technographicsResult] = await Promise.allSettled([
-      exploriumFetch("/v1/businesses/enrichments/firmographics", {
-        business_id: businessId
-      }),
-      exploriumFetch("/v1/businesses/enrichments/technographics", {
-        business_id: businessId
-      })
-    ]);
+    const requestedEnrichments = Array.isArray(enrichmentNames) && enrichmentNames.length
+      ? [...new Set(enrichmentNames)]
+      : [...DEFAULT_SINGLE_ENRICHMENTS];
 
-    const firmographics =
-      firmographicsResult.status === "fulfilled"
-        ? normalizeFirmographics(firmographicsResult.value)
-        : null;
+    const settlementResults = await Promise.allSettled(
+      requestedEnrichments.map((enrichmentName) =>
+        runSingleEnrichment({
+          enrichmentName,
+          businessId,
+          parameters: enrichmentParameters?.[enrichmentName] || {}
+        })
+      )
+    );
 
-    const technographics =
-      technographicsResult.status === "fulfilled"
-        ? normalizeTechnographics(technographicsResult.value)
-        : null;
+    diagnostics.enrichments = {};
+    diagnostics.enrichmentStatus = {};
+    diagnostics.enrichmentRequests = {};
 
-    diagnostics.firmographics = firmographics;
-    diagnostics.technographics = technographics;
-    diagnostics.enrichmentStatus = {
-      firmographics: firmographicsResult.status,
-      technographics: technographicsResult.status
-    };
+    for (let i = 0; i < requestedEnrichments.length; i += 1) {
+      const enrichmentName = requestedEnrichments[i];
+      const definition = getEnrichmentDefinition(enrichmentName);
+      const settled = settlementResults[i];
 
-    if (firmographicsResult.status === "rejected") {
-      maybePush(
-        diagnostics.warnings,
-        `Firmographics enrichment unavailable: ${
-          firmographicsResult.reason?.message || "unknown error"
-        }`
-      );
+      diagnostics.enrichmentStatus[enrichmentName] = settled.status;
+
+      if (settled.status === "fulfilled") {
+        diagnostics.enrichments[enrichmentName] = settled.value.normalized;
+        diagnostics.enrichmentRequests[enrichmentName] = {
+          path: settled.value.path,
+          payload: settled.value.payload
+        };
+      } else {
+        diagnostics.enrichments[enrichmentName] = null;
+        diagnostics.enrichmentRequests[enrichmentName] = {
+          path: definition ? `/v1/businesses/${definition.slug}/enrich` : null,
+          payload: definition
+            ? buildSingleEnrichmentPayload(
+                definition,
+                businessId,
+                enrichmentParameters?.[enrichmentName] || {}
+              )
+            : null
+        };
+
+        maybePush(
+          diagnostics.warnings,
+          `${enrichmentName} enrichment unavailable: ${
+            settled.reason?.message || "unknown error"
+          }`
+        );
+      }
     }
 
-    if (technographicsResult.status === "rejected") {
-      maybePush(
-        diagnostics.warnings,
-        `Technographics enrichment unavailable: ${
-          technographicsResult.reason?.message || "unknown error"
-        }`
-      );
-    }
+    diagnostics.firmographics = diagnostics.enrichments.firmographics || null;
+    diagnostics.technographics = diagnostics.enrichments.technographics || null;
+    diagnostics.companySocialMedia = diagnostics.enrichments.companySocialMedia || null;
+    diagnostics.keywordSearchOnWebsites =
+      diagnostics.enrichments.keywordSearchOnWebsites || null;
+    diagnostics.financialMetrics = diagnostics.enrichments.financialMetrics || null;
+    diagnostics.fundingAndAcquisitions =
+      diagnostics.enrichments.fundingAndAcquisitions || null;
+    diagnostics.businessChallenges = diagnostics.enrichments.businessChallenges || null;
+    diagnostics.competitiveLandscape =
+      diagnostics.enrichments.competitiveLandscape || null;
+    diagnostics.strategicInsights = diagnostics.enrichments.strategicInsights || null;
+    diagnostics.webstack = diagnostics.enrichments.webstack || null;
+    diagnostics.companyHierarchy = diagnostics.enrichments.companyHierarchy || null;
+    diagnostics.businessWebsiteTraffic =
+      diagnostics.enrichments.businessWebsiteTraffic || null;
+    diagnostics.businessIntentTopicsBombora =
+      diagnostics.enrichments.businessIntentTopicsBombora || null;
 
-    const hasFirmographics = hasMeaningfulEnrichment(firmographics);
-    const hasTechnographics = hasMeaningfulEnrichment(technographics);
+    const meaningfulEnrichmentCount = Object.values(diagnostics.enrichments).filter(
+      (value) => hasMeaningfulEnrichment(value)
+    ).length;
 
-    if (!hasFirmographics && !hasTechnographics) {
+    if (meaningfulEnrichmentCount === 0) {
       diagnostics.reason =
         "Business matched, but enrichment returned no usable fields.";
     }
@@ -400,6 +710,7 @@ export async function enrichBusinessOptional({ accountName, domain, linkedinUrl 
     diagnostics.error = {
       message: error?.message || "Unknown Explorium error.",
       status: error?.status || null,
+      path: error?.path || null,
       payload: error?.payload || null
     };
     maybePush(
@@ -409,6 +720,141 @@ export async function enrichBusinessOptional({ accountName, domain, linkedinUrl 
         : "Explorium request failed before completion."
     );
     return diagnostics;
+  }
+}
+
+export async function enrichBusinessesBulkOptional({
+  businesses,
+  enrichmentName,
+  parameters = {}
+}) {
+  const response = {
+    ok: true,
+    attempted: false,
+    enrichmentAvailable: isEnabled(),
+    enrichmentName,
+    requestedCount: Array.isArray(businesses) ? businesses.length : 0,
+    matchedCount: 0,
+    bulkRequestedCount: 0,
+    unmatched: [],
+    warnings: [],
+    results: null
+  };
+
+  if (!isEnabled()) {
+    response.ok = false;
+    response.reason = "Explorium is not configured.";
+    response.warnings.push(
+      "EXPLORIUM_ENABLED is false or EXPLORIUM_API_KEY is missing."
+    );
+    return response;
+  }
+
+  if (!Array.isArray(businesses) || businesses.length === 0) {
+    response.ok = false;
+    response.reason = "Bulk enrichment requires a non-empty businesses array.";
+    return response;
+  }
+
+  const definition = getEnrichmentDefinition(enrichmentName);
+  if (!definition) {
+    response.ok = false;
+    response.reason = `Unknown Explorium enrichment: ${enrichmentName}`;
+    return response;
+  }
+
+  if (businesses.length > MAX_BULK_ENRICHMENT_COMPANIES) {
+    response.ok = false;
+    response.reason = `Bulk enrichment capped at ${MAX_BULK_ENRICHMENT_COMPANIES} companies per request by internal policy.`;
+    response.warnings.push(
+      `Requested ${businesses.length} companies; cap is ${MAX_BULK_ENRICHMENT_COMPANIES}.`
+    );
+    return response;
+  }
+
+  response.attempted = true;
+
+  const matchedBusinessIds = [];
+
+  for (const business of businesses) {
+    const accountName = business?.accountName || business?.name;
+    const domain = business?.domain;
+    const linkedinUrl = business?.linkedinUrl;
+
+    try {
+      const matchPayload = {
+        businesses_to_match: [
+          compactObject({
+            name: String(accountName || "").trim(),
+            domain: normalizeDomain(domain),
+            linkedin_url: normalizeLinkedinUrl(linkedinUrl),
+            url: normalizeDomain(domain) ? `https://${normalizeDomain(domain)}` : undefined
+          })
+        ]
+      };
+
+      const match = await exploriumFetch("/v1/businesses/match", matchPayload);
+      const { businessId } = pickBusinessMatch(match);
+
+      if (businessId) {
+        matchedBusinessIds.push(businessId);
+      } else {
+        response.unmatched.push({
+          accountName: accountName || null,
+          domain: domain || null,
+          reason: "No Explorium business match found."
+        });
+      }
+    } catch (error) {
+      response.unmatched.push({
+        accountName: accountName || null,
+        domain: domain || null,
+        reason: error?.message || "Unexpected match failure."
+      });
+    }
+  }
+
+  response.matchedCount = matchedBusinessIds.length;
+
+  if (matchedBusinessIds.length === 0) {
+    response.reason = "No matched business IDs were available for bulk enrichment.";
+    return response;
+  }
+
+  try {
+    const bulkPayload = compactObject({
+      business_ids: matchedBusinessIds,
+      parameters: Object.keys(parameters || {}).length ? parameters : undefined
+    });
+
+    const bulkPath = `/v1/businesses/${definition.slug}/bulk_enrich`;
+    const bulkRaw = await exploriumFetch(bulkPath, bulkPayload);
+
+    response.bulkRequestedCount = matchedBusinessIds.length;
+    response.results = {
+      path: bulkPath,
+      payload: bulkPayload,
+      raw: bulkRaw
+    };
+    response.reason = "Bulk enrichment completed.";
+
+    return response;
+  } catch (error) {
+    response.ok = false;
+    response.reason = "Bulk enrichment failed.";
+    response.error = {
+      message: error?.message || "Unknown Explorium bulk error.",
+      status: error?.status || null,
+      path: error?.path || null,
+      payload: error?.payload || null
+    };
+    maybePush(
+      response.warnings,
+      error?.status
+        ? `Explorium bulk request failed with status ${error.status}.`
+        : "Explorium bulk request failed before completion."
+    );
+    return response;
   }
 }
 
@@ -430,6 +876,7 @@ export function mergeExploriumIntoProject(project, enrichment) {
 
   const firmo = enrichment.firmographics || {};
   const techno = enrichment.technographics || {};
+  const webstack = enrichment.webstack || {};
 
   if (firmo.employeeBand && isUnknownLike(merged.account.employeeBand)) {
     merged.account.employeeBand = firmo.employeeBand;
@@ -472,6 +919,15 @@ export function mergeExploriumIntoProject(project, enrichment) {
   }
 
   if (
+    !merged.account.tech.webstack &&
+    Array.isArray(webstack.technologiesUsed) &&
+    webstack.technologiesUsed.length > 0
+  ) {
+    merged.account.tech.webstack = webstack.technologiesUsed;
+    addFieldAdded(enrichment, "account.tech.webstack");
+  }
+
+  if (
     typeof merged.account.tech.stackFitScore !== "number" &&
     typeof techno.stackFitScore === "number"
   ) {
@@ -489,3 +945,21 @@ export function mergeExploriumIntoProject(project, enrichment) {
 
   return merged;
 }
+
+export const EXPLORIUM_ENRICHMENT_NAMES = Object.freeze(
+  Object.keys(BUSINESS_ENRICHMENTS)
+);
+
+export const EXPLORIUM_BUSINESS_ENRICHMENTS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(BUSINESS_ENRICHMENTS).map(([key, value]) => [
+      key,
+      {
+        slug: value.slug,
+        requiresParameters: value.requiresParameters === true
+      }
+    ])
+  )
+);
+
+export { MAX_BULK_ENRICHMENT_COMPANIES };
