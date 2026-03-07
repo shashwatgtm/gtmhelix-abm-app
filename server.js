@@ -15,7 +15,10 @@ import {
   mapCsvRowToProject,
   buildBatchOutputCsv
 } from "./src/batch.js";
-import { enrichBusinessOptional, mergeExploriumIntoProject } from "./src/explorium.js";
+import {
+  enrichBusinessOptional,
+  mergeExploriumIntoProject
+} from "./src/explorium.js";
 import { resolveWorkspaceId, initWorkspaceStore } from "./src/workspace.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -142,6 +145,43 @@ function buildWwwAuthenticateHeader(req, errorCode) {
   }
 
   return params.join(", ");
+}
+
+function normalizeWarningText(enrichment) {
+  if (!enrichment || typeof enrichment !== "object") return "";
+
+  const warnings = Array.isArray(enrichment.warnings)
+    ? enrichment.warnings.filter(Boolean)
+    : [];
+
+  if (warnings.length > 0) {
+    return warnings.join(" | ");
+  }
+
+  if (typeof enrichment.warning === "string" && enrichment.warning.trim()) {
+    return enrichment.warning.trim();
+  }
+
+  return "";
+}
+
+function normalizeFieldsAdded(enrichment) {
+  if (!enrichment || typeof enrichment !== "object") return "";
+  if (!Array.isArray(enrichment.fieldsAdded)) return "";
+  return enrichment.fieldsAdded.filter(Boolean).join(" | ");
+}
+
+function buildSkippedEnrichmentResult(reason) {
+  return {
+    ok: true,
+    attempted: false,
+    matched: false,
+    enrichmentAvailable: false,
+    businessId: null,
+    reason,
+    fieldsAdded: [],
+    warnings: [reason]
+  };
 }
 
 /* -----------------------------
@@ -343,7 +383,11 @@ async function getProject({ workspaceId, projectId }) {
 
   ensureFileDb();
   const db = JSON.parse(readFileSync(FILE_DB, "utf8"));
-  return db.projects.find((p) => p.workspaceId === workspaceId && p.projectId === projectId) ?? null;
+  return (
+    db.projects.find(
+      (p) => p.workspaceId === workspaceId && p.projectId === projectId
+    ) ?? null
+  );
 }
 
 async function deleteProject({ workspaceId, projectId }) {
@@ -358,7 +402,9 @@ async function deleteProject({ workspaceId, projectId }) {
   ensureFileDb();
   const db = JSON.parse(readFileSync(FILE_DB, "utf8"));
   const before = db.projects.length;
-  db.projects = db.projects.filter((p) => !(p.workspaceId === workspaceId && p.projectId === projectId));
+  db.projects = db.projects.filter(
+    (p) => !(p.workspaceId === workspaceId && p.projectId === projectId)
+  );
   writeFileSync(FILE_DB, JSON.stringify(db, null, 2), "utf8");
   return db.projects.length < before;
 }
@@ -412,13 +458,12 @@ function normalizePortfolioArgs(raw) {
 
 async function enrichProjectOptionally(project, enrichmentAllowed = true) {
   if (!enrichmentAllowed) {
+    const enrichment = buildSkippedEnrichmentResult(
+      "Explorium enrichment skipped by policy."
+    );
+
     return {
-      enrichment: {
-        ok: true,
-        matched: false,
-        enrichmentAvailable: false,
-        warning: "Explorium enrichment skipped by policy."
-      },
+      enrichment,
       mergedProject: project
     };
   }
@@ -430,6 +475,16 @@ async function enrichProjectOptionally(project, enrichmentAllowed = true) {
   });
 
   const mergedProject = mergeExploriumIntoProject(project, enrichment);
+
+  if (
+    enrichment &&
+    enrichment.matched === true &&
+    (!Array.isArray(enrichment.fieldsAdded) || enrichment.fieldsAdded.length === 0) &&
+    (!enrichment.reason || typeof enrichment.reason !== "string")
+  ) {
+    enrichment.reason =
+      "Matched business, but no project fields were updated because existing values already existed.";
+  }
 
   return { enrichment, mergedProject };
 }
@@ -455,7 +510,11 @@ async function createMcp(auth) {
             "B2B ABM intelligence engine: capture setup defaults once, score single accounts or CSV batches, optionally enrich with Explorium, and generate orchestration-ready outputs.",
           "openai/widgetPrefersBorder": true,
           "openai/widgetCSP": {
-            connect_domains: ["https://chatgpt.com", "https://chat.openai.com", "https://*.railway.app"],
+            connect_domains: [
+              "https://chatgpt.com",
+              "https://chat.openai.com",
+              "https://*.railway.app"
+            ],
             resource_domains: ["https://*.oaistatic.com"]
           }
         }
@@ -467,7 +526,8 @@ async function createMcp(auth) {
     "whoami",
     {
       title: "Who am I?",
-      description: "Use this when you need the current authenticated tenant context and canonical workspace ID.",
+      description:
+        "Use this when you need the current authenticated tenant context and canonical workspace ID.",
       inputSchema: z.object({}).passthrough(),
       annotations: { readOnlyHint: true }
     },
@@ -520,20 +580,29 @@ async function createMcp(auth) {
       title: "Enrich account with Explorium",
       description:
         "Optionally enrich a B2B account using Explorium. Use when account name and optional domain are available. Never assume enrichment is required.",
-      inputSchema: z.object({
-        accountName: z.string().min(2),
-        domain: z.string().optional(),
-        linkedinUrl: z.string().optional()
-      }).passthrough(),
+      inputSchema: z
+        .object({
+          accountName: z.string().min(2),
+          domain: z.string().optional(),
+          linkedinUrl: z.string().optional()
+        })
+        .passthrough(),
       annotations: { readOnlyHint: true }
     },
     async ({ accountName, domain, linkedinUrl }) => {
-      const enrichment = await enrichBusinessOptional({ accountName, domain, linkedinUrl });
+      const enrichment = await enrichBusinessOptional({
+        accountName,
+        domain,
+        linkedinUrl
+      });
 
       return reply({
-        message: enrichment.matched
-          ? "Explorium enrichment completed."
-          : "Explorium enrichment not available or no match found.",
+        message:
+          enrichment.matched === true
+            ? "Explorium enrichment completed."
+            : enrichment.attempted === true
+              ? "Explorium enrichment attempted but no usable enrichment was applied."
+              : "Explorium enrichment skipped or unavailable.",
         structuredContent: {
           ok: true,
           workspaceId,
@@ -557,7 +626,11 @@ async function createMcp(auth) {
       if (!project) {
         return reply({
           message: 'Invalid input shape. Pass JSON like: { "project": { ... } }',
-          structuredContent: { ok: false, fieldErrors: { form: ["Missing project object."] }, draftProject: rawArgs }
+          structuredContent: {
+            ok: false,
+            fieldErrors: { form: ["Missing project object."] },
+            draftProject: rawArgs
+          }
         });
       }
 
@@ -576,7 +649,10 @@ async function createMcp(auth) {
       const enrichmentAllowed =
         parsed.data.programDefaults?.enrichmentAllowed !== false;
 
-      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, enrichmentAllowed);
+      const { enrichment, mergedProject } = await enrichProjectOptionally(
+        parsed.data,
+        enrichmentAllowed
+      );
       const intel = buildAbmProjectIntel(mergedProject);
 
       return reply({
@@ -598,12 +674,14 @@ async function createMcp(auth) {
       title: "Score ABM CSV batch",
       description:
         "Use this after setup_abm_program. Accepts CSV text plus batch defaults, scores every row, optionally enriches missing factual data with Explorium, and returns both structured results and an orchestration-ready CSV output. This is the main tool for 25-1000 account ABM workflows.",
-      inputSchema: z.object({
-        defaults: z.any(),
-        csvText: z.string().min(10),
-        enrichMissingFacts: z.boolean().optional().default(true),
-        topN: z.number().int().min(1).max(1000).optional().default(50)
-      }).passthrough(),
+      inputSchema: z
+        .object({
+          defaults: z.any(),
+          csvText: z.string().min(10),
+          enrichMissingFacts: z.boolean().optional().default(true),
+          topN: z.number().int().min(1).max(1000).optional().default(50)
+        })
+        .passthrough(),
       annotations: { readOnlyHint: true }
     },
     async ({ defaults, csvText, enrichMissingFacts, topN }) => {
@@ -649,8 +727,14 @@ async function createMcp(auth) {
           continue;
         }
 
-        const allowEnrichment = setupParsed.data.enrichmentAllowed !== false && enrichMissingFacts === true;
-        const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, allowEnrichment);
+        const allowEnrichment =
+          setupParsed.data.enrichmentAllowed !== false &&
+          enrichMissingFacts === true;
+
+        const { enrichment, mergedProject } = await enrichProjectOptionally(
+          parsed.data,
+          allowEnrichment
+        );
         const intelligence = buildAbmProjectIntel(mergedProject);
 
         scoredRows.push({
@@ -693,9 +777,12 @@ async function createMcp(auth) {
           watchouts: intelligence.watchouts.join(" | "),
           missingRoles: intelligence.explainability.missingRoles.join(" | "),
           missingDataWarnings: intelligence.explainability.missingDataWarnings.join(" | "),
+          exploriumAttempted: enrichment?.attempted === true ? "true" : "false",
           exploriumMatched: enrichment?.matched === true ? "true" : "false",
           exploriumBusinessId: enrichment?.businessId || "",
-          exploriumWarning: enrichment?.warning || (Array.isArray(enrichment?.warnings) ? enrichment.warnings.join(" | ") : ""),
+          exploriumReason: enrichment?.reason || "",
+          exploriumFieldsAdded: normalizeFieldsAdded(enrichment),
+          exploriumWarning: normalizeWarningText(enrichment),
           fitReasons: intelligence.explainability.fitReasons.join(" | "),
           fitRisks: intelligence.explainability.fitRisks.join(" | "),
           topSignals: intelligence.explainability.topSignals.join(" | "),
@@ -705,6 +792,7 @@ async function createMcp(auth) {
       }
 
       const outputCsv = buildBatchOutputCsv(scoredRows);
+
       const prioritized = prioritizePortfolio({
         accounts: scoredRows
           .slice()
@@ -735,7 +823,16 @@ async function createMcp(auth) {
             errorRows: rowErrors.length,
             tier1: scoredRows.filter((r) => r.tier === "Tier 1").length,
             tier2: scoredRows.filter((r) => r.tier === "Tier 2").length,
-            tier3: scoredRows.filter((r) => r.tier === "Tier 3").length
+            tier3: scoredRows.filter((r) => r.tier === "Tier 3").length,
+            enrichmentAttemptedRows: scoredRows.filter(
+              (r) => r.exploriumAttempted === "true"
+            ).length,
+            enrichmentMatchedRows: scoredRows.filter(
+              (r) => r.exploriumMatched === "true"
+            ).length,
+            enrichmentFieldsAddedRows: scoredRows.filter(
+              (r) => typeof r.exploriumFieldsAdded === "string" && r.exploriumFieldsAdded.length > 0
+            ).length
           },
           rowErrors,
           topAccounts: scoredRows
@@ -763,7 +860,11 @@ async function createMcp(auth) {
       if (!portfolio) {
         return reply({
           message: 'Invalid input shape. Pass JSON like: { "portfolio": { "accounts": [...] } }',
-          structuredContent: { ok: false, fieldErrors: { form: ["Missing portfolio object."] }, draftPortfolio: rawArgs }
+          structuredContent: {
+            ok: false,
+            fieldErrors: { form: ["Missing portfolio object."] },
+            draftPortfolio: rawArgs
+          }
         });
       }
 
@@ -806,7 +907,11 @@ async function createMcp(auth) {
       if (!project) {
         return reply({
           message: 'Invalid input shape. Pass JSON like: { "project": { ... } }',
-          structuredContent: { ok: false, fieldErrors: { form: ["Missing project object."] }, draftProject: rawArgs }
+          structuredContent: {
+            ok: false,
+            fieldErrors: { form: ["Missing project object."] },
+            draftProject: rawArgs
+          }
         });
       }
 
@@ -825,7 +930,10 @@ async function createMcp(auth) {
       const enrichmentAllowed =
         parsed.data.programDefaults?.enrichmentAllowed !== false;
 
-      const { enrichment, mergedProject } = await enrichProjectOptionally(parsed.data, enrichmentAllowed);
+      const { enrichment, mergedProject } = await enrichProjectOptionally(
+        parsed.data,
+        enrichmentAllowed
+      );
       const intel = buildAbmProjectIntel(mergedProject);
       const outputs = { enrichment, intelligence: intel };
 
@@ -854,13 +962,19 @@ async function createMcp(auth) {
     "list_abm_projects",
     {
       title: "List ABM projects",
-      description: "Use this to list saved ABM account strategy projects in the current workspace.",
-      inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional() }).passthrough(),
+      description:
+        "Use this to list saved ABM account strategy projects in the current workspace.",
+      inputSchema: z
+        .object({ limit: z.number().int().min(1).max(50).optional() })
+        .passthrough(),
       annotations: { readOnlyHint: true }
     },
     async ({ limit }) => {
       const projects = await listProjects({ workspaceId, limit: limit ?? 20 });
-      return reply({ message: "Saved projects.", structuredContent: { workspaceId, projects } });
+      return reply({
+        message: "Saved projects.",
+        structuredContent: { workspaceId, projects }
+      });
     }
   );
 
@@ -868,7 +982,8 @@ async function createMcp(auth) {
     "get_abm_project",
     {
       title: "Get ABM project",
-      description: "Use this to load a saved ABM project with full scored intelligence and enrichment output if available.",
+      description:
+        "Use this to load a saved ABM project with full scored intelligence and enrichment output if available.",
       inputSchema: z.object({ projectId: z.string().min(6) }).passthrough(),
       annotations: { readOnlyHint: true }
     },
@@ -877,7 +992,10 @@ async function createMcp(auth) {
       if (!proj) {
         return reply({ message: "Not found.", structuredContent: { ok: false } });
       }
-      return reply({ message: "Project loaded.", structuredContent: { ok: true, workspaceId, project: proj } });
+      return reply({
+        message: "Project loaded.",
+        structuredContent: { ok: true, workspaceId, project: proj }
+      });
     }
   );
 
@@ -891,7 +1009,10 @@ async function createMcp(auth) {
     },
     async ({ projectId }) => {
       const ok = await deleteProject({ workspaceId, projectId });
-      return reply({ message: ok ? "Deleted." : "Nothing deleted.", structuredContent: { ok, workspaceId } });
+      return reply({
+        message: ok ? "Deleted." : "Nothing deleted.",
+        structuredContent: { ok, workspaceId }
+      });
     }
   );
 
@@ -922,7 +1043,9 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/") {
-    return res.writeHead(200, { "content-type": "text/plain" }).end("GTMHelix ABM MCP server is running.");
+    return res
+      .writeHead(200, { "content-type": "text/plain" })
+      .end("GTMHelix ABM MCP server is running.");
   }
 
   if (req.method === "GET" && url.pathname === "/health") {
@@ -932,12 +1055,16 @@ const httpServer = createServer(async (req, res) => {
         db: Boolean(pool),
         authDisabled: AUTH_DISABLED,
         allowedOrigins: ALLOWED_ORIGINS,
-        exploriumEnabled: (process.env.EXPLORIUM_ENABLED || "").toLowerCase() === "true"
+        exploriumEnabled:
+          (process.env.EXPLORIUM_ENABLED || "").toLowerCase() === "true"
       })
     );
   }
 
-  if (req.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+  if (
+    req.method === "GET" &&
+    url.pathname === "/.well-known/oauth-protected-resource"
+  ) {
     return sendJson(res, 200, buildProtectedResourceMetadata(req));
   }
 
@@ -947,7 +1074,9 @@ const httpServer = createServer(async (req, res) => {
     if (!auth) return;
 
     const mcp = await createMcp(auth);
-    const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
+    const transport = new StreamableHTTPServerTransport({
+      enableJsonResponse: true
+    });
 
     res.on("close", () => {
       transport.close();
