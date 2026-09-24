@@ -26,11 +26,18 @@ import { z } from "zod";
 import pg from "pg";
 import { verifyToken } from "@clerk/backend";
 
+// Security: row cap for score_abm_csv_batch (its description promises 25 to 1000 accounts).
+const MAX_BATCH_ROWS = 1000;
+
 /* -----------------------------
    AUTH
 ------------------------------ */
 
 const AUTH_DISABLED = (process.env.DISABLE_AUTH || "").toLowerCase() === "true";
+// Security: never run without login in production (restores the guard removed in faea70c).
+if (AUTH_DISABLED && String(process.env.NODE_ENV || "").toLowerCase() === "production") {
+  throw new Error("Refusing to start: DISABLE_AUTH=true in production.");
+}
 
 const CLERK_JWT_KEY = process.env.CLERK_JWT_KEY || "";
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || "";
@@ -1040,6 +1047,16 @@ async function createMcp(auth) {
           structuredContent: {
             ok: false,
             fieldErrors: { csvText: [e.message] }
+          }
+        });
+      }
+
+      if (rows.length > MAX_BATCH_ROWS) {
+        return reply({
+          message: `CSV has ${rows.length} rows; the limit is ${MAX_BATCH_ROWS} per batch.`,
+          structuredContent: {
+            ok: false,
+            fieldErrors: { csvText: [`At most ${MAX_BATCH_ROWS} rows per batch.`] }
           }
         });
       }
