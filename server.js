@@ -20,6 +20,7 @@ import {
   mergeExploriumIntoProject
 } from "./src/explorium.js";
 import { resolveWorkspaceId, initWorkspaceStore } from "./src/workspace.js";
+import { parseAllowedHosts, resolveExternalBaseUrl } from "./src/base-url.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -43,6 +44,9 @@ const CLERK_JWT_KEY = process.env.CLERK_JWT_KEY || "";
 const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || "";
 const CLERK_ISSUER = (process.env.CLERK_ISSUER || "").replace(/\/+$/, "");
 const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/+$/, "");
+// Security (C-ABM-02): with no APP_BASE_URL, Host and X-Forwarded-Host are trusted only if listed here
+// (comma separated host names, for example "abm.example.com,other.example.com:8443").
+const ALLOWED_HOSTS = parseAllowedHosts(process.env.ALLOWED_HOSTS);
 
 const CLERK_AUTHORIZED_PARTIES = (process.env.CLERK_AUTHORIZED_PARTIES || "")
   .split(",")
@@ -107,22 +111,12 @@ function getBearerToken(req) {
 }
 
 function getExternalBaseUrl(req) {
-  if (APP_BASE_URL) return APP_BASE_URL;
-
-  const protoHeader = req.headers["x-forwarded-proto"];
-  const hostHeader = req.headers["x-forwarded-host"] || req.headers.host;
-
-  const proto =
-    typeof protoHeader === "string" && protoHeader
-      ? protoHeader.split(",")[0].trim()
-      : "http";
-
-  const host =
-    typeof hostHeader === "string" && hostHeader
-      ? hostHeader.split(",")[0].trim()
-      : "localhost";
-
-  return `${proto}://${host}`;
+  return resolveExternalBaseUrl({
+    appBaseUrl: APP_BASE_URL,
+    allowedHosts: ALLOWED_HOSTS,
+    defaultBaseUrl: `http://localhost:${PORT}`,
+    headers: req.headers
+  });
 }
 
 function buildProtectedResourceMetadata(req) {
@@ -1373,7 +1367,14 @@ await initPg();
 const httpServer = createServer(async (req, res) => {
   if (!req.url) return res.writeHead(400).end("Missing URL");
 
-  const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+  // Only the path is used. The base is fixed, so a hostile Host header cannot make URL parsing throw
+  // (an unhandled throw here stopped the whole process); an unparsable request target gets a 400.
+  let url;
+  try {
+    url = new URL(req.url, "http://localhost");
+  } catch {
+    return res.writeHead(400).end("Bad request");
+  }
 
   if (!setCorsHeaders(req, res)) {
     return res.writeHead(403).end("Origin not allowed.");
@@ -1440,6 +1441,11 @@ const httpServer = createServer(async (req, res) => {
 
 httpServer.listen(PORT, () => {
   console.log(`ABM app running: http://localhost:${PORT}${MCP_PATH}`);
+  if (!APP_BASE_URL && ALLOWED_HOSTS.size === 0) {
+    console.warn(
+      `WARNING: APP_BASE_URL is not set and ALLOWED_HOSTS is empty. The OAuth metadata and the WWW-Authenticate challenge use the fixed default http://localhost:${PORT}, never the Host or X-Forwarded-Host headers. Set APP_BASE_URL to the public address of this app (or list its host in ALLOWED_HOSTS).`
+    );
+  }
   console.log(
     AUTH_DISABLED
       ? "AUTH: DISABLED (DISABLE_AUTH=true)"

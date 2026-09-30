@@ -285,12 +285,21 @@
 
       function showErrors(fieldErrors) {
         const keys = Object.keys(fieldErrors ?? {});
-        if (!keys.length) { errorsEl.style.display = "none"; errorsEl.innerHTML = ""; return; }
+        // Field names and messages can echo user input, so they are set as text nodes (textContent), never as HTML.
+        if (!keys.length) { errorsEl.style.display = "none"; errorsEl.textContent = ""; return; }
         errorsEl.style.display = "block";
-        errorsEl.innerHTML = "<b>Fix these:</b><br/>";
+        errorsEl.textContent = "";
+        const heading = document.createElement("b");
+        heading.textContent = "Fix these:";
+        errorsEl.appendChild(heading);
+        errorsEl.appendChild(document.createElement("br"));
         keys.forEach(k => {
           const line = document.createElement("div");
-          line.innerHTML = `<span class="mono">${k}</span>: ${(fieldErrors[k] ?? []).join(" | ")}`;
+          const name = document.createElement("span");
+          name.className = "mono";
+          name.textContent = k;
+          line.appendChild(name);
+          line.appendChild(document.createTextNode(": " + (fieldErrors[k] ?? []).join(" | ")));
           errorsEl.appendChild(line);
         });
       }
@@ -382,24 +391,51 @@
       async function refreshProjects() {
         const resp = await callTool("list_abm_projects", { workspaceId, limit: 25 });
         const rows = resp?.structuredContent?.projects ?? [];
-        projectsTable.innerHTML = `
-          <thead><tr>
-            <th>Client</th><th>Created</th><th>Project ID</th><th>Actions</th>
-          </tr></thead>
-          <tbody>
-            ${rows.map(r => `
-              <tr>
-                <td>${r.clientName}</td>
-                <td>${new Date(r.createdAt).toLocaleString()}</td>
-                <td class="mono">${r.projectId}</td>
-                <td>
-                  <button class="secondary" data-load="${r.projectId}">Load</button>
-                  <button class="danger" data-del="${r.projectId}">Delete</button>
-                </td>
-              </tr>
-            `).join("")}
-          </tbody>
-        `;
+        // Client names and project ids are user-controlled, so every value is set with textContent or setAttribute, never as HTML.
+        projectsTable.textContent = "";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        ["Client", "Created", "Project ID", "Actions"].forEach(title => {
+          const th = document.createElement("th");
+          th.textContent = title;
+          headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        projectsTable.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        rows.forEach(r => {
+          const tr = document.createElement("tr");
+
+          const nameCell = document.createElement("td");
+          nameCell.textContent = r.clientName;
+          tr.appendChild(nameCell);
+
+          const createdCell = document.createElement("td");
+          createdCell.textContent = new Date(r.createdAt).toLocaleString();
+          tr.appendChild(createdCell);
+
+          const idCell = document.createElement("td");
+          idCell.className = "mono";
+          idCell.textContent = r.projectId;
+          tr.appendChild(idCell);
+
+          const actionCell = document.createElement("td");
+          const loadBtn = document.createElement("button");
+          loadBtn.className = "secondary";
+          loadBtn.setAttribute("data-load", r.projectId);
+          loadBtn.textContent = "Load";
+          const delBtn = document.createElement("button");
+          delBtn.className = "danger";
+          delBtn.setAttribute("data-del", r.projectId);
+          delBtn.textContent = "Delete";
+          actionCell.appendChild(loadBtn);
+          actionCell.appendChild(delBtn);
+          tr.appendChild(actionCell);
+
+          tbody.appendChild(tr);
+        });
+        projectsTable.appendChild(tbody);
 
         projectsTable.querySelectorAll("button[data-load]").forEach(b => {
           b.onclick = async () => {

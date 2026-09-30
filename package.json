@@ -9,7 +9,7 @@
     "scripts":  {
                     "dev":  "node server.js",
                     "start":  "node server.js",
-                    "lint":  "node --check server.js src/abm.js src/workspace.js test/abm.test.js",
+                    "lint":  "node --check server.js src/abm.js src/workspace.js src/base-url.js test/abm.test.js test/widget-text.test.js test/base-url.test.js test/base-url-unit.test.js",
                     "test":  "node --test"
                 },
     "dependencies":  {
